@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  pubsub-emulator:
+    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators
+    container_name: gcp-pubsub-emulator
+    command: gcloud beta emulators pubsub start --host-port=0.0.0.0:8085 --project=trading-risk-dev-001
+    ports:
+      - "8085:8085"
+    environment:
+      - PUBSUB_PROJECT_ID=trading-risk-dev-001
+    healthcheck:
+      test: ["CMD", "curl", "-s", "http://localhost:8085"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres-emulator:
+    image: postgres:15-alpine
+    container_name: gcp-postgres-emulator
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=trading_risk_db
+      - POSTGRES_USER=risk_app_user
+      - POSTGRES_PASSWORD=dev_risk_secret_pw
+    volumes:
+      - ../terraform/modules/cloudsql/init_schema.sql:/docker-entrypoint-initdb.d/init_schema.sql

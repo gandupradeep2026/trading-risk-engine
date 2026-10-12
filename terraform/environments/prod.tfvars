@@ -18,3 +18,9 @@ db_tier                     = "db-custom-8-30720"
 db_disk_size_gb             = 200
 database_name               = "trading_risk_db"
 db_username                 = "risk_app_user"
+
+# Pub/Sub (Production settings)
+pubsub_message_retention_duration = "604800s"
+pubsub_ack_deadline_seconds       = 60
+pubsub_max_delivery_attempts      = 5
+

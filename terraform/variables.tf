@@ -95,3 +95,22 @@ variable "db_username" {
   type        = string
   default     = "risk_app_user"
 }
+
+# --- Pub/Sub Module Variables ---
+variable "pubsub_message_retention_duration" {
+  description = "Pub/Sub message retention duration"
+  type        = string
+  default     = "604800s"
+}
+
+variable "pubsub_ack_deadline_seconds" {
+  description = "Pub/Sub ack deadline seconds"
+  type        = number
+  default     = 60
+}
+
+variable "pubsub_max_delivery_attempts" {
+  description = "Pub/Sub max attempts before DLQ routing"
+  type        = number
+  default     = 5
+}

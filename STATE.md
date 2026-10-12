@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 03
+- **Current Milestone Target**: Day 04
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -11,7 +11,7 @@
 
 - [x] **Day 01**: Repo bootstrap, architecture documentation, Terraform network/VPC/subnets module.
 - [x] **Day 02**: Terraform modules for GCS storage buckets (lifecycle policies) and Cloud SQL PostgreSQL instance.
-- [ ] **Day 03**: Terraform modules for Pub/Sub topics, dead-letter subscriptions, and IAM service account roles.
+- [x] **Day 03**: Terraform modules for Pub/Sub topics, dead-letter subscriptions, and IAM service account roles.
 - [ ] **Day 04**: Compute Engine VM provisioning script with systemd and Docker for ingestion worker.
 - [ ] **Day 05**: Kafka broker configuration and multi-partition tick-data topic setup.
 - [ ] **Day 06**: Python multi-threaded ingestion engine streaming real-time market ticks into Kafka.
@@ -63,3 +63,19 @@
   - Wired storage and cloudsql modules into root `terraform/main.tf`, `variables.tf`, `outputs.tf`, `dev.tfvars`, and `prod.tfvars`.
   - Created comprehensive unit test suite in `tests/test_storage_and_database.py` verifying uniform access enforcement, versioning, lifecycle rules, private IP constraints, and SQL schema syntax.
 - **Verification Status**: 19/19 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 03 - 2026-10-12
+- **Milestone Completed**: Terraform modules for Pub/Sub topics, dead-letter subscriptions, and IAM service account roles.
+- **Key Changes Implemented**:
+  - Built production Terraform Pub/Sub and IAM module (`terraform/modules/pubsub/`):
+    - `top-trade-orders` primary order execution stream with dedicated Dead-Letter Queue (DLQ) `top-trade-orders-dlq`.
+    - `sub-trade-orders-dataflow` subscription with strict `DeadLetterPolicy` (`max_delivery_attempts = 5`) and exponential backoff retry policy (10s to 600s).
+    - `top-risk-alerts` operational risk anomaly notification topic with downstream subscription.
+    - Least-privilege service accounts: `sa-ingestion` (`roles/pubsub.publisher`) and `sa-dataflow` (`roles/pubsub.subscriber`, `roles/pubsub.publisher`).
+    - GCP Pub/Sub system agent role bindings to forward messages to DLQ on repeated consumption failures.
+  - Zero-cost local emulator infrastructure:
+    - `ingestion/docker-compose.emulator.yml`: Standalone local emulator definitions for Google Cloud Pub/Sub and PostgreSQL.
+    - `ingestion/pubsub_client.py`: High-throughput `TradeOrder` dataclass with automatic USD notional calculation, validation, JSON serialization, and in-memory `LocalPubSubMock` with complete DLQ delivery simulation.
+  - Integrated pubsub module into root `terraform/main.tf`, `variables.tf`, `outputs.tf`, and environment tfvars.
+  - Test suite in `tests/test_pubsub_and_iam.py`: 9 new unit tests verifying topic/DLQ definitions, IAM least-privilege roles, TradeOrder validation, JSON roundtripping, and DLQ diversion upon exceeding max delivery attempts.
+- **Verification Status**: 28/28 tests passed cleanly (`python -m pytest tests/ -v`).

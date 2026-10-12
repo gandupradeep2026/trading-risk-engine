@@ -70,3 +70,29 @@ output "cloud_sql_database" {
   description = "Operational database name for real-time risk alerts"
   value       = module.cloudsql.database_name
 }
+
+# Pub/Sub Outputs
+output "trade_orders_topic_id" {
+  description = "The ID of the trade orders Pub/Sub topic"
+  value       = module.pubsub.trade_orders_topic_id
+}
+
+output "trade_orders_dlq_topic_id" {
+  description = "The ID of the trade orders DLQ topic"
+  value       = module.pubsub.trade_orders_dlq_topic_id
+}
+
+output "trade_orders_dataflow_subscription_id" {
+  description = "The ID of the Dataflow trade orders subscription"
+  value       = module.pubsub.trade_orders_dataflow_subscription_id
+}
+
+output "ingestion_service_account_email" {
+  description = "The email of the Ingestion producer service account"
+  value       = module.pubsub.ingestion_service_account_email
+}
+
+output "dataflow_service_account_email" {
+  description = "The email of the Dataflow worker service account"
+  value       = module.pubsub.dataflow_service_account_email
+}

@@ -71,3 +71,16 @@ module "cloudsql" {
   database_name    = var.database_name
   db_username      = var.db_username
 }
+
+# -----------------------------------------------------------------------------
+# 4. PUBSUB & IAM MODULE
+# -----------------------------------------------------------------------------
+module "pubsub" {
+  source = "./modules/pubsub"
+
+  project_id                 = var.project_id
+  environment                = var.environment
+  message_retention_duration = var.pubsub_message_retention_duration
+  ack_deadline_seconds       = var.pubsub_ack_deadline_seconds
+  max_delivery_attempts      = var.pubsub_max_delivery_attempts
+}
