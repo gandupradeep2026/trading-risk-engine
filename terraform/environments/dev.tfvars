@@ -1,8 +1,20 @@
-project_id                = "trading-risk-dev-001"
-region                    = "us-central1"
-environment               = "dev"
-network_name              = "trading-risk-vpc"
-ingestion_subnet_cidr     = "10.10.10.0/24"
-streaming_subnet_cidr     = "10.10.20.0/24"
-data_services_subnet_cidr = "10.10.30.0/24"
-enable_flow_logs          = true
+project_id                  = "trading-risk-dev-001"
+region                      = "us-central1"
+environment                 = "dev"
+network_name                = "trading-risk-vpc"
+ingestion_subnet_cidr       = "10.10.10.0/24"
+streaming_subnet_cidr       = "10.10.20.0/24"
+data_services_subnet_cidr   = "10.10.30.0/24"
+enable_flow_logs            = true
+
+# Storage
+force_destroy               = true
+raw_archive_retention_days  = 30
+raw_archive_expiration_days = 365
+
+# Cloud SQL
+database_version            = "POSTGRES_15"
+db_tier                     = "db-custom-2-7680"
+db_disk_size_gb             = 50
+database_name               = "trading_risk_db"
+db_username                 = "risk_app_user"

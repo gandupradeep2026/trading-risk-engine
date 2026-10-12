@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 02
+- **Current Milestone Target**: Day 03
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -10,7 +10,7 @@
 ## 30-Day Milestone Tracker
 
 - [x] **Day 01**: Repo bootstrap, architecture documentation, Terraform network/VPC/subnets module.
-- [ ] **Day 02**: Terraform modules for GCS storage buckets (lifecycle policies) and Cloud SQL PostgreSQL instance.
+- [x] **Day 02**: Terraform modules for GCS storage buckets (lifecycle policies) and Cloud SQL PostgreSQL instance.
 - [ ] **Day 03**: Terraform modules for Pub/Sub topics, dead-letter subscriptions, and IAM service account roles.
 - [ ] **Day 04**: Compute Engine VM provisioning script with systemd and Docker for ingestion worker.
 - [ ] **Day 05**: Kafka broker configuration and multi-partition tick-data topic setup.
@@ -53,3 +53,13 @@
   - Configured root Terraform manifests (`main.tf`, `variables.tf`, `outputs.tf`) and environment tfvars for `dev` and `prod`.
   - Created Pytest suite in `tests/test_network_architecture.py` verifying Terraform syntax, HCL brace matching, CIDR non-overlapping constraints, PGA enforcement, and IAP SSH constraints.
 - **Verification Status**: 8/8 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 02 - 2026-10-12
+- **Milestone Completed**: Terraform modules for GCS storage buckets (lifecycle policies) and Cloud SQL PostgreSQL instance.
+- **Key Changes Implemented**:
+  - Built production Terraform storage module (`terraform/modules/storage/`): 4 tier-isolated buckets (`bronze-raw`, `silver-processed`, `gold-curated`, `dataflow-staging`), enforcing Uniform Bucket-Level Access, regulatory object versioning, multipart upload abortion after 7 days, and automated lifecycle migration (Standard -> Nearline -> Coldline -> Expiration).
+  - Built production Terraform Cloud SQL PostgreSQL module (`terraform/modules/cloudsql/`): PostgreSQL 15, private IP binding over Private Service Access (RFC 1918) with zero public IPv4 exposure, Point-In-Time Recovery (PITR) with 7-day transaction log retention, 14 retained backups, Query Insights, and low-latency database flags (`max_connections`, `log_min_duration_statement`).
+  - Authored PostgreSQL operational schema in `terraform/modules/cloudsql/init_schema.sql` defining `risk_alerts` (UUID, JSONB payload, operational composite indices) and `portfolio_limits`.
+  - Wired storage and cloudsql modules into root `terraform/main.tf`, `variables.tf`, `outputs.tf`, `dev.tfvars`, and `prod.tfvars`.
+  - Created comprehensive unit test suite in `tests/test_storage_and_database.py` verifying uniform access enforcement, versioning, lifecycle rules, private IP constraints, and SQL schema syntax.
+- **Verification Status**: 19/19 tests passed cleanly (`python -m pytest tests/ -v`).
