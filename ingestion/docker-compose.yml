@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  ingestion-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gcr.io/trading-risk-dev-001/ingestion-worker:latest
+    container_name: trading-ingestion-worker
+    environment:
+      - ENVIRONMENT=dev
+      - PROJECT_ID=trading-risk-dev-001
+      - PUBSUB_TOPIC_ID=projects/trading-risk-dev-001/topics/top-trade-orders
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - MARKET_FEED_TICKERS=AAPL,GOOGL,MSFT,AMZN,NVDA,TSLA,JPM,GS
+      - METRICS_PORT=8080
+      - LOG_LEVEL=INFO
+      - SIMULATION_MODE=true
+      - PUBLISH_INTERVAL_SECONDS=1.0
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - trading-net
+
+networks:
+  trading-net:
+    driver: bridge

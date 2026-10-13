@@ -1,0 +1,42 @@
+[Unit]
+Description=Trading Risk Engine - Market Ingestion Worker Daemon
+Documentation=https://github.com/trading-risk-engine
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=riskworker
+Group=docker
+Restart=always
+RestartSec=5s
+TimeoutStopSec=30
+KillMode=mixed
+
+# Resource limits (cgroups enforcement)
+MemoryMax=4G
+CPUQuota=200%
+
+# Environment variables
+EnvironmentFile=-/etc/trading-risk/ingestion.env
+
+# Container lifecycle commands
+ExecStartPre=-/usr/bin/docker stop trading-ingestion-worker
+ExecStartPre=-/usr/bin/docker rm trading-ingestion-worker
+ExecStart=/usr/bin/docker run \
+    --rm \
+    --name trading-ingestion-worker \
+    --network host \
+    --env-file /etc/trading-risk/ingestion.env \
+    ${WORKER_CONTAINER_IMAGE}
+
+ExecStop=/usr/bin/docker stop -t 15 trading-ingestion-worker
+
+# Journal logging
+StandardOutput=journal+console
+StandardError=journal+console
+SyslogIdentifier=trading-ingestion
+
+[Install]
+WantedBy=multi-user.target

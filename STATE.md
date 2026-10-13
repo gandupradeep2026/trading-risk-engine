@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 04
+- **Current Milestone Target**: Day 05
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -12,7 +12,7 @@
 - [x] **Day 01**: Repo bootstrap, architecture documentation, Terraform network/VPC/subnets module.
 - [x] **Day 02**: Terraform modules for GCS storage buckets (lifecycle policies) and Cloud SQL PostgreSQL instance.
 - [x] **Day 03**: Terraform modules for Pub/Sub topics, dead-letter subscriptions, and IAM service account roles.
-- [ ] **Day 04**: Compute Engine VM provisioning script with systemd and Docker for ingestion worker.
+- [x] **Day 04**: Compute Engine VM provisioning script with systemd and Docker for ingestion worker.
 - [ ] **Day 05**: Kafka broker configuration and multi-partition tick-data topic setup.
 - [ ] **Day 06**: Python multi-threaded ingestion engine streaming real-time market ticks into Kafka.
 - [ ] **Day 07**: Asynchronous trade order producer publishing order executions to Cloud Pub/Sub.
@@ -79,3 +79,37 @@
   - Integrated pubsub module into root `terraform/main.tf`, `variables.tf`, `outputs.tf`, and environment tfvars.
   - Test suite in `tests/test_pubsub_and_iam.py`: 9 new unit tests verifying topic/DLQ definitions, IAM least-privilege roles, TradeOrder validation, JSON roundtripping, and DLQ diversion upon exceeding max delivery attempts.
 - **Verification Status**: 28/28 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 04 - 2026-10-13
+- **Milestone Completed**: Compute Engine VM provisioning script with systemd and Docker for ingestion worker.
+- **Key Changes Implemented**:
+  - Built production Terraform Compute Engine module (`terraform/modules/compute/`):
+    - Dedicated market ingestion worker VM (`vm-ingestion-worker-${var.environment}`) provisioned in `sb-ingestion`.
+    - Zero external IPv4 allocation (no `access_config`), routing all egress traffic via Cloud NAT and administrative access via IAP SSH.
+    - Attached to least-privilege IAM service account `sa-ingestion` with `cloud-platform` scopes.
+    - Shielded VM configuration enabled: Secure Boot, vTPM, and Integrity Monitoring.
+    - Cloud Ops metadata configuration with OS Login enabled and automated metadata startup script.
+  - Compute Engine automated startup script (`terraform/modules/compute/scripts/startup.sh`):
+    - High-throughput low-latency Linux kernel network and socket buffer tuning (`net.core.rmem_max=16MB`, TCP buffer allocations, file descriptor limits).
+    - Automated Docker Engine installation with JSON-file log rotation and daemon limits (`max-size: 50m`, `max-file: 5`).
+    - Dedicated unprivileged service user `riskworker` (UID 10001).
+    - Automatic deployment and activation of systemd service unit.
+  - Production Systemd unit (`ingestion/systemd/trading-ingestion.service`):
+    - `Restart=always`, `RestartSec=5s`, `KillMode=mixed`, `TimeoutStopSec=30`.
+    - Resource boundaries: `MemoryMax=4G`, `CPUQuota=200%`.
+    - Unprivileged execution under `riskworker` in docker group.
+  - Standalone host provisioning script (`ingestion/scripts/provision_worker.sh`):
+    - Full idempotency supporting `--validate-only`, `--dry-run`, and full provisioning execution.
+  - Container runtime & deployment definitions:
+    - Multi-stage hardened `ingestion/Dockerfile` with non-root user, healthcheck, and Python 3.12-slim base.
+    - `ingestion/docker-compose.yml` for containerized worker execution.
+    - Runtime dependency manifest `ingestion/requirements.txt`.
+  - Python Ingestion Worker daemon (`ingestion/worker.py`):
+    - `IngestionWorker` orchestrating multi-asset synthetic/live order generation and resilient publishing.
+    - Exponential backoff retry logic on publish errors.
+    - Embedded lightweight HTTP health (`/health`) and Prometheus metrics (`/metrics`) daemon.
+    - POSIX signal handling (SIGTERM/SIGINT) for clean graceful termination.
+  - Wired compute module into root `terraform/main.tf`, `variables.tf`, `outputs.tf`, `dev.tfvars`, and `prod.tfvars`.
+  - Zero-cost test suite in `tests/test_compute_ingestion_worker.py`: 18 new unit tests validating Terraform compute security settings, systemd configuration, shell scripts, Dockerfile hardening, and worker daemon runtime.
+- **Verification Status**: 46/46 tests passed cleanly (`python -m pytest tests/ -v`).
+

@@ -24,3 +24,10 @@ pubsub_message_retention_duration = "604800s"
 pubsub_ack_deadline_seconds       = 60
 pubsub_max_delivery_attempts      = 5
 
+# Compute Engine (Production C2 compute-optimized tier for low latency)
+compute_machine_type   = "c2-standard-4"
+compute_zone           = "us-central1-a"
+compute_disk_size_gb   = 100
+worker_container_image = "gcr.io/trading-risk-prod-001/ingestion-worker:v1.0.0"
+market_feed_tickers    = ["AAPL", "GOOGL", "MSFT", "AMZN", "NVDA", "TSLA", "JPM", "GS", "SPY", "QQQ"]
+

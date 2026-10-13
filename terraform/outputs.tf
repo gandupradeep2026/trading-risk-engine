@@ -96,3 +96,25 @@ output "dataflow_service_account_email" {
   description = "The email of the Dataflow worker service account"
   value       = module.pubsub.dataflow_service_account_email
 }
+
+# Compute Outputs
+output "ingestion_vm_id" {
+  description = "The ID of the Ingestion worker VM"
+  value       = module.compute.instance_id
+}
+
+output "ingestion_vm_name" {
+  description = "The name of the Ingestion worker VM"
+  value       = module.compute.instance_name
+}
+
+output "ingestion_vm_self_link" {
+  description = "The URI of the Ingestion worker VM"
+  value       = module.compute.instance_self_link
+}
+
+output "ingestion_vm_internal_ip" {
+  description = "The internal RFC 1918 IP address of the Ingestion worker VM"
+  value       = module.compute.internal_ip
+}
+

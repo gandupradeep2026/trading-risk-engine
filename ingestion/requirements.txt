@@ -1,0 +1,3 @@
+# Ingestion Worker Runtime Dependencies
+google-cloud-pubsub>=2.19.0
+requests>=2.31.0

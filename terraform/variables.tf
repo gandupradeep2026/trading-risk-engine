@@ -114,3 +114,35 @@ variable "pubsub_max_delivery_attempts" {
   type        = number
   default     = 5
 }
+
+# --- Compute Engine Module Variables ---
+variable "compute_machine_type" {
+  description = "Machine type for the ingestion worker VM"
+  type        = string
+  default     = "e2-standard-2"
+}
+
+variable "compute_zone" {
+  description = "Zone for the ingestion worker VM"
+  type        = string
+  default     = "us-central1-a"
+}
+
+variable "compute_disk_size_gb" {
+  description = "Boot disk size in GB for the ingestion worker VM"
+  type        = number
+  default     = 50
+}
+
+variable "worker_container_image" {
+  description = "Container image URI for the trading ingestion worker"
+  type        = string
+  default     = "gcr.io/trading-risk-dev-001/ingestion-worker:latest"
+}
+
+variable "market_feed_tickers" {
+  description = "Default ticker symbols ingested by the worker"
+  type        = list(string)
+  default     = ["AAPL", "GOOGL", "MSFT", "AMZN", "NVDA", "TSLA", "JPM", "GS"]
+}
+

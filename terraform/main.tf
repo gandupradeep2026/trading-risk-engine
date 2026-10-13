@@ -84,3 +84,23 @@ module "pubsub" {
   ack_deadline_seconds       = var.pubsub_ack_deadline_seconds
   max_delivery_attempts      = var.pubsub_max_delivery_attempts
 }
+
+# -----------------------------------------------------------------------------
+# 5. COMPUTE ENGINE INGESTION WORKER MODULE
+# -----------------------------------------------------------------------------
+module "compute" {
+  source = "./modules/compute"
+
+  project_id             = var.project_id
+  region                 = var.region
+  zone                   = var.compute_zone
+  environment            = var.environment
+  machine_type           = var.compute_machine_type
+  subnetwork_id          = module.network.ingestion_subnet_id
+  service_account_email  = module.pubsub.ingestion_service_account_email
+  boot_disk_size_gb      = var.compute_disk_size_gb
+  worker_container_image = var.worker_container_image
+  pubsub_topic_id        = module.pubsub.trade_orders_topic_id
+  market_feed_tickers    = var.market_feed_tickers
+}
+
