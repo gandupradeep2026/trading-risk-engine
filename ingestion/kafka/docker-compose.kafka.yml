@@ -35,7 +35,35 @@ services:
     networks:
       - trading-net
 
+  tick-streaming-engine:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: gcr.io/trading-risk-dev-001/tick-streaming-engine:latest
+    container_name: gcp-tick-streaming-engine
+    command: ["python", "-m", "ingestion.streaming_engine"]
+    environment:
+      - ENVIRONMENT=dev
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TICKS_TOPIC=market.ticks.v1
+      - KAFKA_DEADLETTER_TOPIC=market.ticks.deadletter
+      - NUM_FEED_THREADS=4
+      - NUM_PRODUCER_THREADS=4
+      - BUFFER_CAPACITY=10000
+      - TICK_INTERVAL_MS=10.0
+      - METRICS_PORT=8081
+      - SIMULATION_MODE=false
+    ports:
+      - "8081:8081"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - trading-net
+    restart: unless-stopped
+
 networks:
   trading-net:
     name: trading-network
     driver: bridge
+

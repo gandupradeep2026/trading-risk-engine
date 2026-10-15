@@ -1,0 +1,43 @@
+[Unit]
+Description=Trading Risk Engine - Multi-Threaded Kafka Market Tick Streaming Daemon
+Documentation=https://github.com/trading-risk-engine
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=riskworker
+Group=docker
+Restart=always
+RestartSec=5s
+TimeoutStopSec=30
+KillMode=mixed
+
+# High-throughput streaming cgroup limits
+MemoryMax=4G
+CPUQuota=400%
+
+# Environment configuration
+EnvironmentFile=-/etc/trading-risk/kafka-streaming.env
+
+# Container lifecycle commands
+ExecStartPre=-/usr/bin/docker stop trading-kafka-streaming
+ExecStartPre=-/usr/bin/docker rm trading-kafka-streaming
+ExecStart=/usr/bin/docker run \
+    --rm \
+    --name trading-kafka-streaming \
+    --network host \
+    --env-file /etc/trading-risk/kafka-streaming.env \
+    ${STREAMING_CONTAINER_IMAGE} \
+    python -m ingestion.streaming_engine
+
+ExecStop=/usr/bin/docker stop -t 15 trading-kafka-streaming
+
+# Journal logging
+StandardOutput=journal+console
+StandardError=journal+console
+SyslogIdentifier=trading-kafka-streaming
+
+[Install]
+WantedBy=multi-user.target
