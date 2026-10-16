@@ -6,7 +6,7 @@ Provides:
 - Dead-letter queue simulation logic.
 """
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timezone
 import json
 import os
@@ -23,11 +23,14 @@ class TradeOrder:
     ticker: str
     asset_class: str
     side: str  # BUY or SELL
-    order_type: str  # MARKET or LIMIT
+    order_type: str  # MARKET, LIMIT, STOP_LOSS
     quantity: float
     price: float
     notional_usd: float
     timestamp: str
+    trader_id: str = "ALGO-EXEC-01"
+    execution_status: str = "FILLED"
+    sequence_number: int = 1
 
     @classmethod
     def create(
@@ -41,6 +44,9 @@ class TradeOrder:
         price: float,
         order_id: Optional[str] = None,
         timestamp: Optional[str] = None,
+        trader_id: Optional[str] = None,
+        execution_status: Optional[str] = None,
+        sequence_number: Optional[int] = None,
     ) -> "TradeOrder":
         """Factory method with automatic validation and UUID generation."""
         if quantity <= 0:
@@ -49,6 +55,8 @@ class TradeOrder:
             raise ValueError(f"Price must be strictly positive, got {price}")
         if side.upper() not in ("BUY", "SELL"):
             raise ValueError(f"Invalid order side: {side}. Must be BUY or SELL.")
+        if order_type.upper() not in ("MARKET", "LIMIT", "STOP_LOSS", "STOP_LIMIT"):
+            raise ValueError(f"Invalid order type: {order_type}. Must be MARKET, LIMIT, STOP_LOSS, or STOP_LIMIT.")
 
         notional = round(quantity * price, 2)
         ts = timestamp or datetime.now(timezone.utc).isoformat()
@@ -65,6 +73,9 @@ class TradeOrder:
             price=price,
             notional_usd=notional,
             timestamp=ts,
+            trader_id=trader_id or "ALGO-EXEC-01",
+            execution_status=(execution_status or "FILLED").upper(),
+            sequence_number=sequence_number or 1,
         )
 
     def to_json(self) -> str:
@@ -73,9 +84,63 @@ class TradeOrder:
 
     @classmethod
     def from_json(cls, data: str) -> "TradeOrder":
-        """Deserialize from JSON string."""
+        """Deserialize from JSON string, handling backwards compatibility."""
         payload = json.loads(data)
-        return cls(**payload)
+        valid_fields = {f.name for f in fields(cls)}
+        filtered = {k: v for k, v in payload.items() if k in valid_fields}
+        return cls(**filtered)
+
+    def get_ordering_key(self, strategy: str = "compound") -> str:
+        """Generate Pub/Sub message ordering key based on partition strategy."""
+        strat = strategy.lower()
+        if strat == "compound":
+            return f"{self.portfolio_id}#{self.ticker}"
+        elif strat == "portfolio":
+            return self.portfolio_id
+        elif strat == "ticker":
+            return self.ticker
+        return ""
+
+    def get_attributes(self, environment: str = "dev") -> Dict[str, str]:
+        """Generate Cloud Pub/Sub message attributes dictionary."""
+        return {
+            "order_id": self.order_id,
+            "portfolio_id": self.portfolio_id,
+            "ticker": self.ticker,
+            "asset_class": self.asset_class,
+            "side": self.side,
+            "order_type": self.order_type,
+            "notional_usd": f"{self.notional_usd:.2f}",
+            "trader_id": self.trader_id,
+            "execution_status": self.execution_status,
+            "sequence_number": str(self.sequence_number),
+            "environment": environment,
+        }
+
+    def validate(self) -> None:
+        """Validate order invariants, raising ValueError if any constraint fails."""
+        if not self.order_id or not self.order_id.strip():
+            raise ValueError("order_id must be non-empty")
+        if not self.portfolio_id or not self.portfolio_id.strip():
+            raise ValueError("portfolio_id must be non-empty")
+        if not self.ticker or not self.ticker.strip():
+            raise ValueError("ticker must be non-empty")
+        if self.quantity <= 0:
+            raise ValueError(f"Quantity must be strictly positive, got {self.quantity}")
+        if self.price <= 0:
+            raise ValueError(f"Price must be strictly positive, got {self.price}")
+        if self.side.upper() not in ("BUY", "SELL"):
+            raise ValueError(f"Invalid order side: {self.side}. Must be BUY or SELL.")
+        if self.order_type.upper() not in ("MARKET", "LIMIT", "STOP_LOSS", "STOP_LIMIT"):
+            raise ValueError(f"Invalid order type: {self.order_type}")
+
+    def is_valid(self) -> bool:
+        """Check whether order satisfies all business rules without raising."""
+        try:
+            self.validate()
+            return True
+        except Exception:
+            return False
 
 
 class LocalPubSubMock:

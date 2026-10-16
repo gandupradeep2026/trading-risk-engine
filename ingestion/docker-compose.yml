@@ -28,6 +28,36 @@ services:
     networks:
       - trading-net
 
+  async-order-producer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gcr.io/trading-risk-dev-001/async-order-producer:latest
+    container_name: trading-async-order-producer
+    command: ["python", "-m", "ingestion.async_order_engine", "--rate", "50.0", "--workers", "4", "--port", "8081"]
+    environment:
+      - ENVIRONMENT=dev
+      - PROJECT_ID=trading-risk-dev-001
+      - PUBSUB_TOPIC_ID=projects/trading-risk-dev-001/topics/top-trade-orders
+      - PUBSUB_DLQ_TOPIC_ID=projects/trading-risk-dev-001/topics/top-trade-orders-dlq
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - ORDER_RATE_PER_SEC=50.0
+      - WORKER_COUNT=4
+      - METRICS_PORT=8081
+      - ENABLE_MESSAGE_ORDERING=true
+      - SIMULATION_MODE=true
+      - LOG_LEVEL=INFO
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - trading-net
+
 networks:
   trading-net:
     driver: bridge

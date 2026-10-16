@@ -1,0 +1,43 @@
+[Unit]
+Description=Trading Risk Engine - Asynchronous Cloud Pub/Sub Trade Order Producer Daemon
+Documentation=https://github.com/trading-risk-engine
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=riskworker
+Group=docker
+Restart=always
+RestartSec=5s
+TimeoutStopSec=30
+KillMode=mixed
+
+# High-throughput asynchronous publishing cgroup resource boundaries
+MemoryMax=4G
+CPUQuota=300%
+
+# Environment configuration
+EnvironmentFile=-/etc/trading-risk/async-order-producer.env
+
+# Container lifecycle commands
+ExecStartPre=-/usr/bin/docker stop trading-async-order-producer
+ExecStartPre=-/usr/bin/docker rm trading-async-order-producer
+ExecStart=/usr/bin/docker run \
+    --rm \
+    --name trading-async-order-producer \
+    --network host \
+    --env-file /etc/trading-risk/async-order-producer.env \
+    ${PRODUCER_CONTAINER_IMAGE} \
+    python -m ingestion.async_order_engine --rate 50.0 --workers 4 --port 8081
+
+ExecStop=/usr/bin/docker stop -t 15 trading-async-order-producer
+
+# Journal logging
+StandardOutput=journal+console
+StandardError=journal+console
+SyslogIdentifier=trading-async-order-producer
+
+[Install]
+WantedBy=multi-user.target
