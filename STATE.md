@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 08
+- **Current Milestone Target**: Day 09
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -16,7 +16,7 @@
 - [x] **Day 05**: Kafka broker configuration and multi-partition tick-data topic setup.
 - [x] **Day 06**: Python multi-threaded ingestion engine streaming real-time market ticks into Kafka.
 - [x] **Day 07**: Asynchronous trade order producer publishing order executions to Cloud Pub/Sub.
-- [ ] **Day 08**: Cloud Dataflow (Apache Beam) pipeline boilerplate with Pub/Sub IO and JSON decoders.
+- [x] **Day 08**: Cloud Dataflow (Apache Beam) pipeline boilerplate with Pub/Sub IO and JSON decoders.
 - [ ] **Day 09**: Dataflow sliding window transforms (5-min drop detection) and custom DoFn anomaly detectors.
 - [ ] **Day 10**: Multi-output Dataflow pipeline routing clean alerts to Cloud SQL and raw sinks to GCS.
 - [ ] **Day 11**: Comprehensive Apache Beam unit tests using TestStream and mock events.
@@ -189,3 +189,29 @@
   - Comprehensive zero-cost test suite in `tests/test_async_order_producer.py`:
     - 27 unit and integration tests validating schema rules, ordering keys, mock future callbacks, flow control, backpressure, retries, DLQ routing, order feed generation, async order engine lifecycle, HTTP health/metrics endpoints, and systemd/compose configurations.
 - **Verification Status**: 111/111 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 08 - 2026-10-17
+- **Milestone Completed**: Cloud Dataflow (Apache Beam) pipeline boilerplate with Pub/Sub IO and JSON decoders.
+- **Key Changes Implemented**:
+  - Streaming compute architecture package initialized under `streaming/` with `streaming/requirements.txt` defining runtime dependencies (`apache-beam[gcp]`, `google-cloud-pubsub`, `pydantic`).
+  - Implemented `RiskEnginePipelineOptions` in `streaming/dataflow/options.py`:
+    - Inherits from Apache Beam's `PipelineOptions` with custom argument parsing for `--environment`, `--project_id`, `--input_subscription`, `--input_topic`, `--deadletter_topic`, `--output_alerts_topic`, `--gcs_output_path`, `--window_duration_seconds`, `--window_slide_seconds`, `--max_anomaly_drop_threshold`, `--enable_attributes`, and `--enable_deadletter_sink`.
+    - Auto-generates canonical GCP resource paths matching the Terraform infrastructure catalog (`top-trade-orders-{env}`, `sub-trade-orders-dataflow-{env}`, `top-trade-orders-dlq-{env}`, `top-risk-alerts-{env}`, `trading-risk-bronze-{env}`).
+    - Comprehensive option validation ensuring consistency, positive window durations, and DataflowRunner required parameters.
+  - Implemented financial trade order decoders and Dead-Letter Queue (DLQ) routing in `streaming/dataflow/decoders.py`:
+    - `DeadLetterRecord` envelope dataclass capturing unparseable/invalid payloads, error diagnostics, timestamps, original message IDs, ordering keys, and source Pub/Sub attributes.
+    - `DecodeAndValidateTradeOrderFn` Beam DoFn supporting `PubsubMessage`, raw `bytes`, `str`, and `dict` inputs.
+    - Defensive UTF-8 handling and JSON syntax validation with error categorization (`UnicodeDecodeError`, `JSONDecodeError`).
+    - Domain invariant validation enforcing positive prices, positive quantities, non-empty order/portfolio/ticker identifiers, valid sides (`BUY`, `SELL`), and valid order types (`MARKET`, `LIMIT`, `STOP_LOSS`, `STOP_LIMIT`).
+    - Event-time timestamp extraction (ISO 8601 strings and numeric epoch seconds/millis) assigning `beam.window.TimestampedValue` for sliding window aggregations.
+    - Cloud Monitoring / Prometheus Beam metrics counters and distributions (`messages_received`, `valid_orders_decoded`, `json_decode_errors`, `schema_validation_errors`, `unicode_decode_errors`, `missing_field_errors`, `deadletter_emitted`, `order_notional_usd`, `payload_size_bytes`).
+    - `FormatDeadLetterForPubSubFn` formatting failed records into `PubsubMessage` with diagnostic headers.
+    - `DecodeAndValidateOrders` composite PTransform branching clean orders to `TAG_VALID_ORDERS` and corrupt records to `TAG_DEADLETTER`.
+  - Built production Dataflow pipeline DAG builder in `streaming/dataflow/pipeline.py`:
+    - `build_pipeline` configuring Pub/Sub IO reads (`ReadFromPubSub` by subscription or topic with attributes), applying order decoding/validation, branching outputs, and routing dead-letter records to `WriteToPubSub(deadletter_topic)`.
+    - Encapsulates DAG in `DataflowPipelineBundle` for composability in subsequent windowing and sink milestones.
+  - Added CLI execution entry point in `streaming/dataflow/run_pipeline.py` supporting both local DirectRunner and GCP DataflowRunner.
+  - Comprehensive zero-cost hermetic unit and integration test suite in `tests/test_dataflow_order_pipeline.py`:
+    - 39 new unit and integration tests covering pipeline options, canonical naming, validation rules, DeadLetterRecord serialization/roundtrips, DoFn processing across all valid and corrupted input formats, missing fields, domain rules, Beam DirectRunner execution with clean streams, mixed streams with deterministic DLQ routing, attribute retention, and DAG construction.
+- **Verification Status**: 150/150 tests passed cleanly (`python -m pytest tests/ -v`).
+
