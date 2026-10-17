@@ -211,7 +211,8 @@
     - `build_pipeline` configuring Pub/Sub IO reads (`ReadFromPubSub` by subscription or topic with attributes), applying order decoding/validation, branching outputs, and routing dead-letter records to `WriteToPubSub(deadletter_topic)`.
     - Encapsulates DAG in `DataflowPipelineBundle` for composability in subsequent windowing and sink milestones.
   - Added CLI execution entry point in `streaming/dataflow/run_pipeline.py` supporting both local DirectRunner and GCP DataflowRunner.
+  - Built interactive local visual dashboard server in `streaming/dashboard_server.py` (serving on `http://localhost:8050`) driving `MarketFeedGenerator`, `OrderFeedGenerator`, and `DecodeAndValidateTradeOrderFn` in real time with fault injection and custom JSON payload testing.
   - Comprehensive zero-cost hermetic unit and integration test suite in `tests/test_dataflow_order_pipeline.py`:
-    - 39 new unit and integration tests covering pipeline options, canonical naming, validation rules, DeadLetterRecord serialization/roundtrips, DoFn processing across all valid and corrupted input formats, missing fields, domain rules, Beam DirectRunner execution with clean streams, mixed streams with deterministic DLQ routing, attribute retention, and DAG construction.
-- **Verification Status**: 150/150 tests passed cleanly (`python -m pytest tests/ -v`).
+    - 41 unit and integration tests covering pipeline options, canonical naming, validation rules, DeadLetterRecord serialization/roundtrips, DoFn processing across all valid and corrupted input formats, missing fields, domain rules, Beam DirectRunner execution with clean streams, mixed streams with deterministic DLQ routing, attribute retention, DAG construction, and the interactive visual dashboard server.
+- **Verification Status**: 152/152 tests passed cleanly (`python -m pytest tests/ -v`).
 

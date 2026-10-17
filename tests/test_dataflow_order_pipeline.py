@@ -639,3 +639,102 @@ class TestPipelineDAGConstruction:
         with pytest.raises(ValueError, match="Streaming pipeline requires either --input_subscription or --input_topic"):
             with BeamTestPipeline() as p:
                 build_pipeline(opts, pipeline=p)
+
+
+# -----------------------------------------------------------------------------
+# 7. INTERACTIVE VISUAL DASHBOARD SERVER TESTS
+# -----------------------------------------------------------------------------
+class TestStreamingDashboardServer:
+    """Validate the local interactive visual dashboard state engine and HTTP endpoints."""
+
+    def test_dashboard_engine_state_step_and_fault_injection(self) -> None:
+        """Verify DashboardEngineState drives MarketFeed, OrderFeed, and Beam DoFn."""
+        from streaming.dashboard_server import DashboardEngineState
+
+        engine = DashboardEngineState(environment="dev", seed=101)
+        initial = engine.get_snapshot()
+        assert initial["metrics"]["valid_orders"] == 5
+        assert initial["metrics"]["dlq_total"] == 2
+
+        # Step simulation
+        after_step = engine.step(tick_count=4)
+        assert after_step["metrics"]["total_ticks"] == 4
+        assert after_step["metrics"]["valid_orders"] == 6
+
+        # Inject faults across all error categories
+        for fault_type, expected_err in [
+            ("unicode", "UnicodeDecodeError"),
+            ("json", "JSONDecodeError"),
+            ("missing", "MissingFieldError"),
+            ("negative_price", "ValidationError"),
+            ("invalid_side", "ValidationError"),
+        ]:
+            out = engine.inject_event(fault_type)
+            assert out["result"]["ok"] is False
+            assert out["result"]["dlq"]["error_type"] == expected_err
+
+        # Custom valid payload
+        custom_good = json.dumps({
+            "order_id": "ORD-DASH-99",
+            "portfolio_id": "PORT-DASH",
+            "ticker": "NVDA",
+            "asset_class": "EQUITY",
+            "side": "BUY",
+            "order_type": "LIMIT",
+            "quantity": 10.0,
+            "price": 140.0,
+        })
+        custom_out = engine.inject_event("custom", custom_payload=custom_good)
+        assert custom_out["result"]["ok"] is True
+        assert custom_out["result"]["order"]["order_id"] == "ORD-DASH-99"
+
+        # Reset counters
+        reset_snap = engine.reset()
+        assert reset_snap["metrics"]["valid_orders"] == 0
+        assert reset_snap["metrics"]["dlq_total"] == 0
+
+    def test_dashboard_http_server_endpoints(self) -> None:
+        """Verify HTTP GET/POST endpoints on StreamingDashboardServer."""
+        import urllib.request
+        from streaming.dashboard_server import StreamingDashboardServer
+
+        server = StreamingDashboardServer(host="127.0.0.1", port=0, environment="dev")
+        port = server.start()
+        base_url = f"http://127.0.0.1:{port}"
+
+        try:
+            # 1. GET / (HTML UI)
+            with urllib.request.urlopen(f"{base_url}/", timeout=5) as resp:
+                assert resp.status == 200
+                html = resp.read().decode("utf-8")
+                assert "trading-risk-engine" in html
+
+            # 2. GET /health
+            with urllib.request.urlopen(f"{base_url}/health", timeout=5) as resp:
+                assert resp.status == 200
+                health = json.loads(resp.read().decode("utf-8"))
+                assert health["status"] == "healthy"
+
+            # 3. POST /api/step
+            req_step = urllib.request.Request(f"{base_url}/api/step", data=b"{}", method="POST")
+            with urllib.request.urlopen(req_step, timeout=5) as resp:
+                assert resp.status == 200
+                state = json.loads(resp.read().decode("utf-8"))
+                assert state["metrics"]["total_ticks"] >= 3
+
+            # 4. POST /api/inject
+            inject_body = json.dumps({"type": "json"}).encode("utf-8")
+            req_inject = urllib.request.Request(
+                f"{base_url}/api/inject",
+                data=inject_body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req_inject, timeout=5) as resp:
+                assert resp.status == 200
+                injected = json.loads(resp.read().decode("utf-8"))
+                assert injected["result"]["ok"] is False
+                assert injected["result"]["dlq"]["error_type"] == "JSONDecodeError"
+        finally:
+            server.stop()
+
