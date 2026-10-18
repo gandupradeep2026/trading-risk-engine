@@ -88,6 +88,24 @@ class RiskEnginePipelineOptions(PipelineOptions):
             help="Maximum acceptable portfolio price drawdown threshold before generating a risk alert (default: 5%%).",
         )
         parser.add_argument(
+            "--max_window_notional_usd",
+            type=float,
+            default=2500000.0,
+            help="Maximum cumulative 5-minute window notional exposure before triggering a breach alert (default: $2.5M).",
+        )
+        parser.add_argument(
+            "--enable_window_anomaly_detection",
+            action="store_true",
+            default=True,
+            help="Whether to apply 5-minute sliding window transforms and anomaly detection DoFns.",
+        )
+        parser.add_argument(
+            "--enable_alerts_pubsub_sink",
+            action="store_true",
+            default=False,
+            help="Whether to publish detected risk alerts directly to the Pub/Sub alerts topic.",
+        )
+        parser.add_argument(
             "--wait_until_finish",
             action="store_true",
             default=False,

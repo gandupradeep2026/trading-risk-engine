@@ -1,9 +1,22 @@
 """Cloud Dataflow (Apache Beam) Financial Streaming Pipeline Package.
 
 Provides production-grade pipeline construction, custom options, Pub/Sub IO integration,
-JSON decoders with schema validation, Dead-Letter Queue (DLQ) routing, and metrics.
+JSON decoders with schema validation, Dead-Letter Queue (DLQ) routing, 5-minute sliding
+window transforms, custom DoFn anomaly detectors, and telemetry metrics.
 """
 
+from streaming.dataflow.anomaly_detector import (
+    TAG_RISK_ALERTS,
+    TAG_WINDOW_STATS,
+    DetectSlidingWindowDrawdownFn,
+    EvaluateSingleOrderSpikeFn,
+    FormatRiskAlertForPubSubFn,
+    KeyByPortfolioAndTickerFn,
+    RiskAlert,
+    SlidingWindowAnomalyTransform,
+    WindowDrawdownStats,
+    classify_drawdown_severity,
+)
 from streaming.dataflow.decoders import (
     TAG_DEADLETTER,
     TAG_RAW_AUDIT,
@@ -22,9 +35,19 @@ __all__ = [
     "DecodeAndValidateTradeOrderFn",
     "FormatDeadLetterForPubSubFn",
     "DecodeAndValidateOrders",
+    "RiskAlert",
+    "WindowDrawdownStats",
+    "KeyByPortfolioAndTickerFn",
+    "DetectSlidingWindowDrawdownFn",
+    "EvaluateSingleOrderSpikeFn",
+    "FormatRiskAlertForPubSubFn",
+    "SlidingWindowAnomalyTransform",
+    "classify_drawdown_severity",
     "DataflowPipelineBundle",
     "build_pipeline",
     "TAG_VALID_ORDERS",
     "TAG_DEADLETTER",
     "TAG_RAW_AUDIT",
+    "TAG_WINDOW_STATS",
+    "TAG_RISK_ALERTS",
 ]

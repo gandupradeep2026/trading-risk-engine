@@ -1,11 +1,13 @@
-"""Cloud Dataflow Pipeline Builder for Real-Time Trade Stream Ingestion.
+"""Cloud Dataflow Pipeline Builder for Real-Time Trade Stream & Anomaly Detection.
 
 Builds the Apache Beam pipeline DAG:
 1. Consumes trade execution events from Google Cloud Pub/Sub using Pub/Sub IO.
 2. Decodes UTF-8 JSON payloads and validates quantitative invariants.
 3. Separates valid trade executions from corrupt/malformed records into tagged outputs.
 4. Routes deadlettered records to the dedicated Cloud Pub/Sub Dead-Letter Queue (DLQ).
-5. Exposes the valid orders stream for downstream windowing (Day 09) and multi-output sinks (Day 10).
+5. Applies 5-minute sliding window transforms (`SlidingWindows(300, 60)`) and custom
+   DoFn anomaly detectors (`DetectSlidingWindowDrawdownFn`) to emit rolling window
+   microstructure statistics and real-time `RiskAlert` records.
 """
 
 from dataclasses import dataclass
@@ -15,6 +17,12 @@ from typing import Optional
 import apache_beam as beam
 from apache_beam.io.gcp.pubsub import ReadFromPubSub, WriteToPubSub
 
+from streaming.dataflow.anomaly_detector import (
+    TAG_RISK_ALERTS,
+    TAG_WINDOW_STATS,
+    FormatRiskAlertForPubSubFn,
+    SlidingWindowAnomalyTransform,
+)
 from streaming.dataflow.decoders import (
     TAG_DEADLETTER,
     TAG_VALID_ORDERS,
@@ -35,6 +43,8 @@ class DataflowPipelineBundle:
     deadletter_records: beam.PCollection
     raw_messages: Optional[beam.PCollection] = None
     dlq_messages: Optional[beam.PCollection] = None
+    window_stats: Optional[beam.PCollection] = None
+    risk_alerts: Optional[beam.PCollection] = None
 
 
 def build_pipeline(
@@ -91,10 +101,34 @@ def build_pipeline(
             with_attributes=True,
         )
 
+    # 4. Sliding Window (5-min drop detection) & Custom DoFn Anomaly Detection Step
+    window_stats = None
+    risk_alerts = None
+    if getattr(options, "enable_window_anomaly_detection", True):
+        window_outputs = valid_orders | "SlidingWindowAnomalyDetection" >> SlidingWindowAnomalyTransform(
+            window_duration_seconds=options.window_duration_seconds,
+            window_slide_seconds=options.window_slide_seconds,
+            max_drop_threshold=options.max_anomaly_drop_threshold,
+            max_window_notional_usd=getattr(options, "max_window_notional_usd", 2_500_000.0),
+        )
+        window_stats = window_outputs[TAG_WINDOW_STATS]
+        risk_alerts = window_outputs[TAG_RISK_ALERTS]
+
+        if options.output_alerts_topic and getattr(options, "enable_alerts_pubsub_sink", False):
+            alert_msgs = risk_alerts | "FormatRiskAlertsForPubSub" >> beam.ParDo(
+                FormatRiskAlertForPubSubFn()
+            )
+            _ = alert_msgs | "WriteRiskAlertsToPubSub" >> WriteToPubSub(
+                topic=options.output_alerts_topic,
+                with_attributes=True,
+            )
+
     return DataflowPipelineBundle(
         pipeline=p,
         valid_orders=valid_orders,
         deadletter_records=deadletter_records,
         raw_messages=raw_messages,
         dlq_messages=dlq_messages,
+        window_stats=window_stats,
+        risk_alerts=risk_alerts,
     )

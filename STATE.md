@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 09
+- **Current Milestone Target**: Day 10
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -17,7 +17,7 @@
 - [x] **Day 06**: Python multi-threaded ingestion engine streaming real-time market ticks into Kafka.
 - [x] **Day 07**: Asynchronous trade order producer publishing order executions to Cloud Pub/Sub.
 - [x] **Day 08**: Cloud Dataflow (Apache Beam) pipeline boilerplate with Pub/Sub IO and JSON decoders.
-- [ ] **Day 09**: Dataflow sliding window transforms (5-min drop detection) and custom DoFn anomaly detectors.
+- [x] **Day 09**: Dataflow sliding window transforms (5-min drop detection) and custom DoFn anomaly detectors.
 - [ ] **Day 10**: Multi-output Dataflow pipeline routing clean alerts to Cloud SQL and raw sinks to GCS.
 - [ ] **Day 11**: Comprehensive Apache Beam unit tests using TestStream and mock events.
 - [ ] **Day 12**: Dataproc PySpark streaming application consuming continuous tick records from Kafka.
@@ -215,4 +215,24 @@
   - Comprehensive zero-cost hermetic unit and integration test suite in `tests/test_dataflow_order_pipeline.py`:
     - 41 unit and integration tests covering pipeline options, canonical naming, validation rules, DeadLetterRecord serialization/roundtrips, DoFn processing across all valid and corrupted input formats, missing fields, domain rules, Beam DirectRunner execution with clean streams, mixed streams with deterministic DLQ routing, attribute retention, DAG construction, and the interactive visual dashboard server.
 - **Verification Status**: 152/152 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 09 - 2026-10-18
+- **Milestone Completed**: Dataflow sliding window transforms (5-min drop detection) and custom DoFn anomaly detectors.
+- **Key Changes Implemented**:
+  - Implemented quantitative sliding-window anomaly detection and risk alerting module in `streaming/dataflow/anomaly_detector.py`:
+    - `RiskAlert` dataclass matching the Cloud SQL PostgreSQL `risk_alerts` operational schema (`alert_id`, `portfolio_id`, `ticker`, `asset_class`, `alert_type`, `severity`, `metric_name`, `threshold_value`, `observed_value`, `event_timestamp`, `detected_at`, `payload_json`) with JSON roundtripping, Cloud SQL row dictionary serialization, and `PubsubMessage` conversion with ordering keys.
+    - `WindowDrawdownStats` dataclass capturing 5-minute rolling window microstructure aggregates (`open_price`, `close_price`, `peak_price`, `trough_price`, `vwap`, `max_drawdown_pct`, `window_drop_pct`, `total_notional_usd`, `buy_notional_usd`, `sell_notional_usd`, `net_delta_usd`).
+    - `KeyByPortfolioAndTickerFn` extracting composite `portfolio_id#ticker` keys for group-by-key windowing.
+    - `DetectSlidingWindowDrawdownFn` custom Beam `DoFn` computing chronological peak-to-trough drawdown (`max_drawdown_pct`), open-to-close drop (`window_drop_pct`), Volume-Weighted Average Price (`vwap`), and gross/directional notional exposure across 5-minute sliding windows, emitting tagged `RiskAlert` records for:
+      1. `FLASH_CRASH_DRAWDOWN` (rolling 5-minute drawdown >= threshold, default 5.0%),
+      2. `NOTIONAL_EXPOSURE_BREACH` (rolling 5-minute cumulative notional >= limit, default $2.5M),
+      3. `CONCENTRATED_SELL_PRESSURE` (institutional sell-side notional concentration >= 85% across >= 4 orders).
+    - `EvaluateSingleOrderSpikeFn` zero-latency custom `DoFn` detecting fat-finger single-order notional limit breaches (`SINGLE_ORDER_FAT_FINGER`).
+    - `FormatRiskAlertForPubSubFn` formatting `RiskAlert` records into `PubsubMessage` payloads for `top-risk-alerts-{env}`.
+    - `SlidingWindowAnomalyTransform` composite `PTransform` applying `beam.WindowInto(window.SlidingWindows(size=300, period=60))`, keying by `portfolio_id#ticker`, grouping by key, and branching outputs into `window_stats` and `risk_alerts`.
+  - Extended `RiskEnginePipelineOptions` in `streaming/dataflow/options.py` with `--max_window_notional_usd`, `--enable_window_anomaly_detection`, and `--enable_alerts_pubsub_sink`.
+  - Integrated `SlidingWindowAnomalyTransform` into `build_pipeline` and `DataflowPipelineBundle` in `streaming/dataflow/pipeline.py` and exported new symbols in `streaming/dataflow/__init__.py`.
+  - Authored zero-cost unit and Apache Beam `TestPipeline` integration test suite in `tests/test_dataflow_window_anomalies.py` (15 tests covering severity classification, `RiskAlert` Cloud SQL/PubSub serialization, chronological peak-to-trough vs. monotonic rally behavior, notional breach, concentrated sell pressure, fat-finger single-order spikes, and full 5-minute sliding window Beam execution).
+- **Verification Status**: 167/167 tests passed cleanly (`python -m pytest tests/ -v`).
+
 
