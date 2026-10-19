@@ -23,11 +23,24 @@ from streaming.dataflow.anomaly_detector import (
     FormatRiskAlertForPubSubFn,
     SlidingWindowAnomalyTransform,
 )
+from streaming.dataflow.cloudsql_sink import (
+    TAG_CLOUDSQL_FAILED,
+    TAG_CLOUDSQL_SUCCESS,
+    CloudSqlConfig,
+    CloudSqlDatabaseClient,
+    WriteAlertsToCloudSql,
+)
 from streaming.dataflow.decoders import (
     TAG_DEADLETTER,
     TAG_VALID_ORDERS,
     DecodeAndValidateOrders,
     FormatDeadLetterForPubSubFn,
+)
+from streaming.dataflow.gcs_sink import (
+    TAG_GCS_DEADLETTER,
+    TAG_GCS_RAW_ORDERS,
+    WriteRawDeadLetterToGcs,
+    WriteRawOrdersToGcs,
 )
 from streaming.dataflow.options import RiskEnginePipelineOptions
 
@@ -45,12 +58,17 @@ class DataflowPipelineBundle:
     dlq_messages: Optional[beam.PCollection] = None
     window_stats: Optional[beam.PCollection] = None
     risk_alerts: Optional[beam.PCollection] = None
+    cloudsql_alerts_written: Optional[beam.PCollection] = None
+    cloudsql_failures: Optional[beam.PCollection] = None
+    gcs_orders_written: Optional[beam.PCollection] = None
+    gcs_deadletter_written: Optional[beam.PCollection] = None
 
 
 def build_pipeline(
     options: RiskEnginePipelineOptions,
     pipeline: Optional[beam.Pipeline] = None,
     test_input_pcoll: Optional[beam.PCollection] = None,
+    cloudsql_client: Optional[CloudSqlDatabaseClient] = None,
 ) -> DataflowPipelineBundle:
     """Construct the Apache Beam trading risk streaming pipeline.
 
@@ -123,6 +141,41 @@ def build_pipeline(
                 with_attributes=True,
             )
 
+    # 5. Sink Step: Google Cloud Storage (GCS) Raw Orders & Dead-Letter Cold Tier
+    gcs_orders_written = None
+    if getattr(options, "enable_gcs_raw_sink", False) and options.gcs_output_path:
+        logger.info("Configuring GCS raw orders sink to path: %s", options.gcs_output_path)
+        gcs_orders_written = valid_orders | "WriteRawOrdersToGcs" >> WriteRawOrdersToGcs(
+            output_path=options.gcs_output_path,
+            window_seconds=getattr(options, "gcs_window_seconds", 60),
+            num_shards=getattr(options, "gcs_num_shards", 1),
+        )
+
+    gcs_deadletter_written = None
+    if getattr(options, "enable_gcs_deadletter_sink", False) and getattr(options, "gcs_deadletter_output_path", None):
+        logger.info("Configuring GCS deadletter sink to path: %s", options.gcs_deadletter_output_path)
+        gcs_deadletter_written = deadletter_records | "WriteRawDeadLetterToGcs" >> WriteRawDeadLetterToGcs(
+            output_path=options.gcs_deadletter_output_path,
+            window_seconds=getattr(options, "gcs_window_seconds", 60),
+            num_shards=getattr(options, "gcs_num_shards", 1),
+        )
+
+    # 6. Sink Step: Cloud SQL Operational Risk Alerts Sink
+    cloudsql_alerts_written = None
+    cloudsql_failures = None
+    if getattr(options, "enable_cloudsql_sink", False) and risk_alerts is not None:
+        logger.info(
+            "Configuring Cloud SQL alerts sink to table: %s",
+            getattr(options, "cloudsql_table", "risk_alerts"),
+        )
+        cloudsql_config = CloudSqlConfig.from_pipeline_options(options)
+        cloudsql_outputs = risk_alerts | "WriteAlertsToCloudSql" >> WriteAlertsToCloudSql(
+            config=cloudsql_config,
+            client=cloudsql_client,
+        )
+        cloudsql_alerts_written = cloudsql_outputs[TAG_CLOUDSQL_SUCCESS]
+        cloudsql_failures = cloudsql_outputs[TAG_CLOUDSQL_FAILED]
+
     return DataflowPipelineBundle(
         pipeline=p,
         valid_orders=valid_orders,
@@ -131,4 +184,8 @@ def build_pipeline(
         dlq_messages=dlq_messages,
         window_stats=window_stats,
         risk_alerts=risk_alerts,
+        cloudsql_alerts_written=cloudsql_alerts_written,
+        cloudsql_failures=cloudsql_failures,
+        gcs_orders_written=gcs_orders_written,
+        gcs_deadletter_written=gcs_deadletter_written,
     )

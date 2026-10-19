@@ -78,6 +78,10 @@ class TradeOrder:
             sequence_number=sequence_number or 1,
         )
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert trade order to dictionary representation."""
+        return asdict(self)
+
     def to_json(self) -> str:
         """Serialize trade order to JSON string."""
         return json.dumps(asdict(self))

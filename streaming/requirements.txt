@@ -1,4 +1,6 @@
 # Cloud Dataflow (Apache Beam) Pipeline Runtime Dependencies
 apache-beam[gcp]>=2.50.0
 google-cloud-pubsub>=2.19.0
+google-cloud-storage>=2.14.0
+pg8000>=1.30.0
 pydantic>=2.0.0

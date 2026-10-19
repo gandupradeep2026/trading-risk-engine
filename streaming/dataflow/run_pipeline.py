@@ -51,6 +51,14 @@ def run(argv: Optional[List[str]] = None) -> None:
     elif pipeline_options.input_topic:
         logger.info("Consuming from Pub/Sub Topic: %s", pipeline_options.input_topic)
     logger.info("Dead-Letter Topic: %s", pipeline_options.deadletter_topic)
+    if getattr(pipeline_options, "enable_gcs_raw_sink", False):
+        logger.info("GCS Raw Orders Sink enabled: %s", pipeline_options.gcs_output_path)
+    if getattr(pipeline_options, "enable_cloudsql_sink", False):
+        logger.info(
+            "Cloud SQL Alerts Sink enabled: %s (table: %s)",
+            pipeline_options.cloudsql_instance,
+            pipeline_options.cloudsql_table,
+        )
 
     bundle = build_pipeline(pipeline_options)
 

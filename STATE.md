@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 10
+- **Current Milestone Target**: Day 11
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -18,7 +18,7 @@
 - [x] **Day 07**: Asynchronous trade order producer publishing order executions to Cloud Pub/Sub.
 - [x] **Day 08**: Cloud Dataflow (Apache Beam) pipeline boilerplate with Pub/Sub IO and JSON decoders.
 - [x] **Day 09**: Dataflow sliding window transforms (5-min drop detection) and custom DoFn anomaly detectors.
-- [ ] **Day 10**: Multi-output Dataflow pipeline routing clean alerts to Cloud SQL and raw sinks to GCS.
+- [x] **Day 10**: Multi-output Dataflow pipeline routing clean alerts to Cloud SQL and raw sinks to GCS.
 - [ ] **Day 11**: Comprehensive Apache Beam unit tests using TestStream and mock events.
 - [ ] **Day 12**: Dataproc PySpark streaming application consuming continuous tick records from Kafka.
 - [ ] **Day 13**: PySpark rolling VWAP (Volume-Weighted Average Price) and volatility band aggregations.
@@ -234,5 +234,33 @@
   - Integrated `SlidingWindowAnomalyTransform` into `build_pipeline` and `DataflowPipelineBundle` in `streaming/dataflow/pipeline.py` and exported new symbols in `streaming/dataflow/__init__.py`.
   - Authored zero-cost unit and Apache Beam `TestPipeline` integration test suite in `tests/test_dataflow_window_anomalies.py` (15 tests covering severity classification, `RiskAlert` Cloud SQL/PubSub serialization, chronological peak-to-trough vs. monotonic rally behavior, notional breach, concentrated sell pressure, fat-finger single-order spikes, and full 5-minute sliding window Beam execution).
 - **Verification Status**: 167/167 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 10 - 2026-10-19
+- **Milestone Completed**: Multi-output Dataflow pipeline routing clean alerts to Cloud SQL and raw sinks to GCS.
+- **Key Changes Implemented**:
+  - Built production Cloud SQL PostgreSQL operational risk alerts sink in `streaming/dataflow/cloudsql_sink.py`:
+    - `CloudSqlConfig`: Enterprise configuration dataclass with connection pooling, table definitions, batch sizing (`batch_size=50`), retry limits (`max_retries=3`), exponential backoff (`retry_backoff_sec=0.5`), and driver selection (`auto`, `pg8000`, `sqlite3`, `mock`).
+    - `CloudSqlDatabaseClient`: Database client managing connection lifecycles, idempotent table initialization (`risk_alerts` table DDL matching `terraform/modules/cloudsql/init_schema.sql`), and bulk row inserts with deduplication (`ON CONFLICT (alert_id) DO NOTHING` for PostgreSQL / `INSERT OR IGNORE` for SQLite). Supports pure-Python `pg8000` on GCP and zero-cost hermetic in-memory/file SQLite for local testing and CI.
+    - `WriteAlertsToCloudSqlFn`: Custom Beam `DoFn` implementing bundle-level batching (`start_bundle`, `process`, `finish_bundle`), exponential backoff on transient errors, dead-letter routing to `TAG_CLOUDSQL_FAILED` on persistent failures, and Cloud Monitoring / Prometheus metrics (`alerts_written_cloudsql`, `cloudsql_batches_flushed`, `cloudsql_write_errors`, `cloudsql_deadletter_emitted`).
+    - `WriteAlertsToCloudSql`: Composite `PTransform` branching clean alerts into `TAG_CLOUDSQL_SUCCESS` and `TAG_CLOUDSQL_FAILED`.
+  - Built production Google Cloud Storage (GCS) raw audit & data lake cold-tier sink in `streaming/dataflow/gcs_sink.py`:
+    - `FormatOrderForGcsFn`: Custom Beam `DoFn` serializing `TradeOrder` objects into structured newline-delimited JSON records enriched with cold-tier audit metadata (`_tier: BRONZE_RAW`, `_gcs_ingested_at`).
+    - `FormatDeadLetterForGcsFn`: Custom Beam `DoFn` formatting `DeadLetterRecord` instances with forensic error diagnostics for regulatory compliance (`_tier: BRONZE_DEADLETTER`, `_gcs_ingested_at`).
+    - `WriteRawOrdersToGcs`: Composite `PTransform` applying fixed windowing (default: 60s) and writing partitioned JSON lines files to GCS Bronze bucket (`trading-risk-bronze-{env}`) or local directories.
+    - `WriteRawDeadLetterToGcs`: Composite `PTransform` windowing and archiving unparseable payloads to cold storage.
+    - `_normalize_output_prefix`: Normalizes output paths ensuring directory prefixes and slash conventions.
+  - Extended `RiskEnginePipelineOptions` in `streaming/dataflow/options.py`:
+    - Added CLI parameters for Cloud SQL: `--enable_cloudsql_sink`, `--cloudsql_instance`, `--cloudsql_database`, `--cloudsql_user`, `--cloudsql_password`, `--cloudsql_host`, `--cloudsql_port`, `--cloudsql_table`, `--cloudsql_batch_size`, `--cloudsql_max_retries`, `--cloudsql_retry_backoff_sec`, `--cloudsql_driver`, `--cloudsql_sqlite_path`.
+    - Added CLI parameters for GCS sinks: `--enable_gcs_raw_sink`, `--gcs_window_seconds`, `--gcs_num_shards`, `--gcs_deadletter_output_path`, `--enable_gcs_deadletter_sink`.
+    - Canonical resolution for `cloudsql_instance` (`{project_id}:us-central1:trading-risk-db-{env}`) and GCS Bronze paths.
+    - Validation constraints for `gcs_window_seconds > 0` and `cloudsql_batch_size > 0`.
+  - Multi-output Dataflow DAG integration in `streaming/dataflow/pipeline.py`:
+    - Updated `build_pipeline` and `DataflowPipelineBundle` to wire and expose `cloudsql_alerts_written`, `cloudsql_failures`, `gcs_orders_written`, and `gcs_deadletter_written`.
+    - Updated package exports in `streaming/dataflow/__init__.py` and logging in `streaming/dataflow/run_pipeline.py`.
+    - Added `google-cloud-storage>=2.14.0` and `pg8000>=1.30.0` to `streaming/requirements.txt`.
+    - Added `to_dict()` helper to `TradeOrder` in `ingestion/pubsub_client.py`.
+  - Authored zero-cost unit and integration test suite in `tests/test_dataflow_multi_output_sinks.py`:
+    - 17 unit and integration tests covering Cloud SQL config/options resolution, SQLite DDL structure, idempotent deduplication, transient retry with backoff, permanent error containment, DoFn batching and metrics, GCS JSON lines formatting, prefix normalization, Beam DirectRunner file writing, and end-to-end multi-output pipeline execution (orders to GCS raw, malformed to DLQ, flash-crash alerts to Cloud SQL SQLite).
+- **Verification Status**: 184/184 tests passed cleanly (`python -m pytest tests/ -v`).
 
 
