@@ -115,6 +115,23 @@ class CloudSqlDatabaseClient:
         self._is_sqlite = False
         self._init_driver()
 
+    @classmethod
+    def from_options(cls, options: Any) -> "CloudSqlDatabaseClient":
+        """Instantiate client directly from RiskEnginePipelineOptions."""
+        config = CloudSqlConfig.from_pipeline_options(options)
+        return cls(config)
+
+    def __getstate__(self) -> Dict[str, Any]:
+        """Exclude live database connection handle when pickling for Beam distributed execution."""
+        state = self.__dict__.copy()
+        state["_conn"] = None
+        return state
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Restore instance state without connection handle."""
+        self.__dict__.update(state)
+        self._conn = None
+
     def _init_driver(self) -> None:
         """Determine whether to use PostgreSQL or SQLite."""
         if self.config.driver == "sqlite3" or self.config.sqlite_db_path is not None:
@@ -173,6 +190,10 @@ class CloudSqlDatabaseClient:
             self._conn.row_factory = sqlite3.Row
             self._init_schema()
             return self._conn
+
+    def initialize_schema(self) -> Any:
+        """Explicitly connect and ensure the risk_alerts schema is created idempotently."""
+        return self.connect()
 
     def _init_schema(self) -> None:
         """Create the risk_alerts table idempotently."""

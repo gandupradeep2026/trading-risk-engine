@@ -124,6 +124,7 @@ class DecodeAndValidateTradeOrderFn(beam.DoFn):
     def process(
         self,
         element: Union[PubsubMessage, bytes, str, Dict[str, Any]],
+        timestamp: Union[beam.utils.timestamp.Timestamp, float] = beam.DoFn.TimestampParam,
         *args,
         **kwargs,
     ) -> Generator[Union[TradeOrder, pvalue.TaggedOutput], None, None]:
@@ -290,9 +291,13 @@ class DecodeAndValidateTradeOrderFn(beam.DoFn):
         iso_timestamp_str: str = ""
 
         if not raw_ts:
-            now_dt = datetime.now(timezone.utc)
-            event_timestamp_sec = now_dt.timestamp()
-            iso_timestamp_str = now_dt.isoformat()
+            if isinstance(timestamp, (int, float, beam.utils.timestamp.Timestamp)) and float(timestamp) > 0:
+                event_timestamp_sec = float(timestamp)
+                iso_timestamp_str = datetime.fromtimestamp(event_timestamp_sec, tz=timezone.utc).isoformat()
+            else:
+                now_dt = datetime.now(timezone.utc)
+                event_timestamp_sec = now_dt.timestamp()
+                iso_timestamp_str = now_dt.isoformat()
         elif isinstance(raw_ts, (int, float)):
             # Epoch timestamp (support seconds or milliseconds)
             event_timestamp_sec = float(raw_ts) if raw_ts < 1e11 else float(raw_ts) / 1000.0

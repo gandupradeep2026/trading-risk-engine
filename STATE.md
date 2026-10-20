@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 11
+- **Current Milestone Target**: Day 12
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -19,7 +19,7 @@
 - [x] **Day 08**: Cloud Dataflow (Apache Beam) pipeline boilerplate with Pub/Sub IO and JSON decoders.
 - [x] **Day 09**: Dataflow sliding window transforms (5-min drop detection) and custom DoFn anomaly detectors.
 - [x] **Day 10**: Multi-output Dataflow pipeline routing clean alerts to Cloud SQL and raw sinks to GCS.
-- [ ] **Day 11**: Comprehensive Apache Beam unit tests using TestStream and mock events.
+- [x] **Day 11**: Comprehensive Apache Beam unit tests using TestStream and mock events.
 - [ ] **Day 12**: Dataproc PySpark streaming application consuming continuous tick records from Kafka.
 - [ ] **Day 13**: PySpark rolling VWAP (Volume-Weighted Average Price) and volatility band aggregations.
 - [ ] **Day 14**: PySpark streaming sink writing partitioned Snappy-compressed Parquet directly to GCS.
@@ -262,5 +262,35 @@
   - Authored zero-cost unit and integration test suite in `tests/test_dataflow_multi_output_sinks.py`:
     - 17 unit and integration tests covering Cloud SQL config/options resolution, SQLite DDL structure, idempotent deduplication, transient retry with backoff, permanent error containment, DoFn batching and metrics, GCS JSON lines formatting, prefix normalization, Beam DirectRunner file writing, and end-to-end multi-output pipeline execution (orders to GCS raw, malformed to DLQ, flash-crash alerts to Cloud SQL SQLite).
 - **Verification Status**: 184/184 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 11 - 2026-10-20
+- **Milestone Completed**: Comprehensive Apache Beam unit tests using TestStream and mock events.
+- **Key Changes Implemented**:
+  - Implemented streaming testing & simulation package under `streaming/dataflow/testing/`:
+    - `mock_events.py`:
+      - `CorruptionType` enum defining synthetic corruption modes (`JSON_SYNTAX_ERROR`, `UNICODE_DECODE_ERROR`, `MISSING_FIELD`, `NON_POSITIVE_PRICE`, `NON_POSITIVE_QUANTITY`, `INVALID_SIDE`, `INVALID_ORDER_TYPE`, `INVALID_TIMESTAMP`, `NOT_A_DICT`).
+      - Financial mock event factories (`create_mock_order_dict`, `create_mock_order_bytes`, `create_mock_pubsub_message`) with automatic notional calculation, deterministic ISO timestamps, and Pub/Sub attributes/ordering keys.
+      - Specialized quantitative scenario generators:
+        1. `create_flash_crash_event_sequence`: generates accelerating descending prices to a trough price over defined durations.
+        2. `create_fat_finger_event`: generates single massive order ($6.25M) exceeding limits.
+        3. `create_sell_pressure_event_sequence`: generates high institutional sell-side concentration (>= 85%).
+        4. `create_notional_breach_event_sequence`: generates orders exceeding cumulative 5-minute window thresholds ($2.5M).
+        5. `create_multi_asset_portfolio_stream`: generates multi-asset interleaved stream across Equities, ETFs, FX, and Crypto with ticker isolation.
+    - `test_stream_builder.py`:
+      - `StreamScenarioBuilder`: fluent API wrapper over Apache Beam's `TestStream`.
+      - Buffering pending elements per watermark step to ensure efficient micro-bundle emission and accurate metrics aggregation.
+      - Strict watermark monotonicity validation (`new_wm > current_wm`).
+      - Processing time advancement and out-of-order event injection.
+      - Prepackaged scenario builders (`build_happy_path_scenario`, `build_flash_crash_scenario`, `build_dlq_corruption_scenario`, `build_multi_portfolio_scenario`).
+    - `matchers.py`:
+      - Custom Beam test assertions (`matches_set`, `has_count`, `contains_subset`, `elements_satisfy`) supporting set comparisons across multi-window firings.
+  - Enhanced pipeline components for streaming resilience:
+    - `streaming/dataflow/decoders.py`: updated `DecodeAndValidateTradeOrderFn.process` to accept `timestamp: beam.DoFn.TimestampParam` as fallback event-time timestamp when payload timestamp is omitted.
+    - `streaming/dataflow/cloudsql_sink.py`: added `CloudSqlDatabaseClient.from_options` factory method, explicit `initialize_schema()` method, and implemented `__getstate__`/`__setstate__` to exclude live database connection handles during Beam distributed serialization.
+    - `streaming/dataflow/__init__.py`: exported testing symbols and fixtures.
+  - Authored comprehensive zero-cost Apache Beam test suite in `tests/test_dataflow_test_stream.py`:
+    - 29 unit and integration tests verifying mock event schemas, corruption types, watermark monotonicity, stream decoders, attribute retention, DLQ routing across all error types, committed metric counter tracking, sliding window flash-crash detection across multiple slide firings, out-of-order event sorting, cumulative notional breaches, sell concentration, single-order fat fingers, multi-portfolio isolation, quiescent market gaps, high-frequency bursts, and end-to-end multi-sink execution (clean orders to GCS, corrupt to DLQ, alerts to SQLite Cloud SQL).
+- **Verification Status**: 213/213 tests passed cleanly (`python -m pytest tests/ -v`).
+
 
 

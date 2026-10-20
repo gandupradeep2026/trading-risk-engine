@@ -44,6 +44,27 @@ from streaming.dataflow.gcs_sink import (
 )
 from streaming.dataflow.options import RiskEnginePipelineOptions
 from streaming.dataflow.pipeline import DataflowPipelineBundle, build_pipeline
+from streaming.dataflow.testing import (
+    CorruptionType,
+    StreamScenarioBuilder,
+    build_dlq_corruption_scenario,
+    build_flash_crash_scenario,
+    build_happy_path_scenario,
+    build_multi_portfolio_scenario,
+    contains_subset,
+    create_corrupt_message,
+    create_fat_finger_event,
+    create_flash_crash_event_sequence,
+    create_mock_order_bytes,
+    create_mock_order_dict,
+    create_mock_pubsub_message,
+    create_multi_asset_portfolio_stream,
+    create_notional_breach_event_sequence,
+    create_sell_pressure_event_sequence,
+    elements_satisfy,
+    has_count,
+    matches_set,
+)
 
 __all__ = [
     "RiskEnginePipelineOptions",
@@ -78,4 +99,23 @@ __all__ = [
     "TAG_CLOUDSQL_FAILED",
     "TAG_GCS_RAW_ORDERS",
     "TAG_GCS_DEADLETTER",
+    "CorruptionType",
+    "create_mock_order_dict",
+    "create_mock_order_bytes",
+    "create_mock_pubsub_message",
+    "create_corrupt_message",
+    "create_flash_crash_event_sequence",
+    "create_fat_finger_event",
+    "create_sell_pressure_event_sequence",
+    "create_notional_breach_event_sequence",
+    "create_multi_asset_portfolio_stream",
+    "StreamScenarioBuilder",
+    "build_happy_path_scenario",
+    "build_flash_crash_scenario",
+    "build_dlq_corruption_scenario",
+    "build_multi_portfolio_scenario",
+    "matches_set",
+    "has_count",
+    "contains_subset",
+    "elements_satisfy",
 ]
