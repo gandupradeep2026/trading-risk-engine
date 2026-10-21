@@ -1050,6 +1050,8 @@ class StreamingDashboardServer:
                     self._send_json(404, {"error": "Not Found"})
 
             def do_POST(self) -> None:
+                length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
                 if self.path == "/api/step":
                     snapshot = engine_state.step()
                     self._send_json(200, snapshot)
@@ -1057,8 +1059,6 @@ class StreamingDashboardServer:
                     snapshot = engine_state.reset()
                     self._send_json(200, snapshot)
                 elif self.path == "/api/inject":
-                    length = int(self.headers.get("Content-Length", "0"))
-                    raw_body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
                     try:
                         req = json.loads(raw_body)
                         etype = req.get("type", "valid")
@@ -1075,6 +1075,7 @@ class StreamingDashboardServer:
                 self.send_response(status_code)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(encoded)))
+                self.send_header("Connection", "close")
                 self.end_headers()
                 self.wfile.write(encoded)
 

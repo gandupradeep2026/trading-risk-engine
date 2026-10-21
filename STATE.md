@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 12
+- **Current Milestone Target**: Day 13
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -20,7 +20,7 @@
 - [x] **Day 09**: Dataflow sliding window transforms (5-min drop detection) and custom DoFn anomaly detectors.
 - [x] **Day 10**: Multi-output Dataflow pipeline routing clean alerts to Cloud SQL and raw sinks to GCS.
 - [x] **Day 11**: Comprehensive Apache Beam unit tests using TestStream and mock events.
-- [ ] **Day 12**: Dataproc PySpark streaming application consuming continuous tick records from Kafka.
+- [x] **Day 12**: Dataproc PySpark streaming application consuming continuous tick records from Kafka.
 - [ ] **Day 13**: PySpark rolling VWAP (Volume-Weighted Average Price) and volatility band aggregations.
 - [ ] **Day 14**: PySpark streaming sink writing partitioned Snappy-compressed Parquet directly to GCS.
 - [ ] **Day 15**: Cloud Composer (Apache Airflow) DAG scaffolding, GCP connections, and notification hooks.
@@ -291,6 +291,26 @@
   - Authored comprehensive zero-cost Apache Beam test suite in `tests/test_dataflow_test_stream.py`:
     - 29 unit and integration tests verifying mock event schemas, corruption types, watermark monotonicity, stream decoders, attribute retention, DLQ routing across all error types, committed metric counter tracking, sliding window flash-crash detection across multiple slide firings, out-of-order event sorting, cumulative notional breaches, sell concentration, single-order fat fingers, multi-portfolio isolation, quiescent market gaps, high-frequency bursts, and end-to-end multi-sink execution (clean orders to GCS, corrupt to DLQ, alerts to SQLite Cloud SQL).
 - **Verification Status**: 213/213 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 12 - 2026-10-21
+- **Milestone Completed**: Dataproc PySpark streaming application consuming continuous tick records from Kafka.
+- **Key Changes Implemented**:
+  - Built enterprise Dataproc PySpark Structured Streaming configuration in `streaming/dataproc/config.py`:
+    - `DataprocStreamingConfig`: Canonical GCP/Kafka/Spark Structured Streaming configuration dataclass with environment-aware resource naming (`dp-tick-streaming-{env}`, `cg-dataproc-tick-streaming-{env}`, GCS checkpoint & Bronze/quarantine paths), SparkConf dictionary builder (`to_spark_conf_dict()`), and Kafka source options builder (`to_kafka_read_options()`).
+    - `parse_duration_to_seconds()`: Parses Spark interval strings (`500 milliseconds`, `5 seconds`, `30 seconds`, `1 minute`, `1 hour`) into float seconds with strict validation.
+    - Full CLI argument (`from_cli_args()`) and environment variable (`from_env()`) loaders.
+  - Implemented explicit Spark SQL schema & microstructure validator in `streaming/dataproc/schema.py`:
+    - `MARKET_TICK_SCHEMA_DDL` & `MARKET_TICK_STRUCT_SPEC`: Explicit Spark SQL DDL schema preventing runtime schema inference overhead and capturing malformed payloads via `_corrupt_record`.
+    - `ParsedTickRecord` & `CorruptTickRecord`: Structured dataclasses for validated/enriched market ticks and quarantined dead-letter records.
+    - `parse_and_validate_kafka_record()`: Enforces UTF-8/JSON decoding, required field presence, allowed asset classes (`EQUITY`, `FX`, `COMMODITY`, `CRYPTO`, `ETF`), strictly positive prices/volumes, non-crossed quotes (`bid <= ask`), and ISO-8601/epoch timestamps, while computing microstructure enrichments (`spread`, `mid_price`, `notional_usd`, `relative_spread_bps`, `year`/`month`/`day`/`hour` partition columns).
+  - Built Dataproc PySpark Structured Streaming consumer in `streaming/dataproc/tick_consumer.py`:
+    - Native PySpark builders (`build_spark_session`, `build_kafka_read_stream`, `build_parsed_tick_streams`, `start_Bronze_and_quarantine_writers`, `build_stream_plan_descriptor`).
+    - Zero-cost hermetic local micro-batch engine (`PySparkKafkaTickConsumer`) consuming directly from `LocalKafkaProducerMock` or raw Kafka envelopes with per-partition offset tracking (`earliest`, `latest`, JSON offset maps), `max_offsets_per_trigger` rate limiting, local checkpoint persistence (`offsets.json`) for fault-tolerant recovery across restarts, event-time watermark advancement (`max_event_time - watermark_delay`), late event dropping, corrupt record quarantine routing, and Prometheus metrics exposition (`StreamingQueryTelemetry.format_prometheus()`).
+  - Added CLI runner `streaming/dataproc/run_tick_consumer.py` (`--dry_run`, `--local_simulation`, and cluster execution mode), Dataproc submission script `streaming/dataproc/submit_job.sh` (`gcloud dataproc jobs submit pyspark`), and updated `streaming/requirements.txt` (`pyspark>=3.5.0`, `pyarrow>=14.0.0`).
+  - Authored zero-cost unit and integration test suite in `tests/test_dataproc_kafka_tick_consumer.py`:
+    - 46 tests validating duration parsing, config invariants, Spark/Kafka options, DDL schema parity, microstructure enrichments, corruption quarantine modes, SparkSession/readStream builders, stateful multi-partition micro-batch consumption from `MarketFeedGenerator` + `LocalKafkaProducerMock`, `starting_offsets="latest"` vs `"earliest"`, checkpoint restart recovery, watermark late-event dropping, Prometheus metrics, CLI runner modes, and `submit_job.sh`.
+- **Verification Status**: 259/259 tests passed cleanly (`python -m pytest tests/ -v`).
+
 
 
 

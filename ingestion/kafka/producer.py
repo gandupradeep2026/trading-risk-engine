@@ -228,6 +228,12 @@ class LocalKafkaProducerMock:
 
             return metadata
 
+    @property
+    def partitions(self) -> Dict[str, Dict[int, List[ProducerRecord]]]:
+        """Access topic partitions mapping for inspection and consumer testing."""
+        with self._lock:
+            return self._partitions
+
     def flush(self, timeout: Optional[float] = None) -> None:
         """Flush simulated buffer."""
         pass
@@ -436,6 +442,14 @@ class KafkaTickProducer:
                 value=encoded,
                 headers=headers,
             )
+
+    @property
+    def partitions(self) -> Dict[str, Dict[int, List[ProducerRecord]]]:
+        """Access topic partitions mapping for inspection and consumer testing."""
+        with self._lock:
+            if self.mock_producer is not None:
+                return self.mock_producer.partitions
+            return {}
 
     def flush(self, timeout: Optional[float] = None) -> None:
         """Flush any pending in-flight messages."""
