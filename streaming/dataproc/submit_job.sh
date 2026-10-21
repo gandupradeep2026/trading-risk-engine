@@ -38,4 +38,8 @@ gcloud dataproc jobs submit pyspark \
   --starting_offsets="latest" \
   --max_offsets_per_trigger=50000 \
   --trigger_processing_time="5 seconds" \
-  --watermark_delay_threshold="30 seconds"
+  --watermark_delay_threshold="30 seconds" \
+  --vwap_window_duration="5 minutes" \
+  --vwap_slide_duration="1 minute" \
+  --volatility_k_multiplier=2.0 \
+  --volatility_spike_threshold_pct=3.0

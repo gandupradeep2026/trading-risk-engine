@@ -260,6 +260,9 @@ def parse_and_validate_kafka_record(
     elif isinstance(raw_value, dict):
         payload_dict = raw_value
         payload_str = json.dumps(raw_value)
+    elif hasattr(raw_value, "to_dict") and callable(getattr(raw_value, "to_dict")):
+        payload_dict = raw_value.to_dict()
+        payload_str = json.dumps(payload_dict)
     else:
         return CorruptTickRecord(
             raw_payload=str(raw_value),
@@ -272,7 +275,9 @@ def parse_and_validate_kafka_record(
             quarantined_at=now_iso,
         )
 
-    if not isinstance(raw_value, dict):
+    if not isinstance(raw_value, dict) and not (
+        hasattr(raw_value, "to_dict") and callable(getattr(raw_value, "to_dict"))
+    ):
         try:
             parsed_json = json.loads(payload_str)
         except Exception as jex:

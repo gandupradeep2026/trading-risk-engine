@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 13
+- **Current Milestone Target**: Day 14
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -21,7 +21,7 @@
 - [x] **Day 10**: Multi-output Dataflow pipeline routing clean alerts to Cloud SQL and raw sinks to GCS.
 - [x] **Day 11**: Comprehensive Apache Beam unit tests using TestStream and mock events.
 - [x] **Day 12**: Dataproc PySpark streaming application consuming continuous tick records from Kafka.
-- [ ] **Day 13**: PySpark rolling VWAP (Volume-Weighted Average Price) and volatility band aggregations.
+- [x] **Day 13**: PySpark rolling VWAP (Volume-Weighted Average Price) and volatility band aggregations.
 - [ ] **Day 14**: PySpark streaming sink writing partitioned Snappy-compressed Parquet directly to GCS.
 - [ ] **Day 15**: Cloud Composer (Apache Airflow) DAG scaffolding, GCP connections, and notification hooks.
 - [ ] **Day 16**: Databricks workspace configs and Delta Lake Bronze layer ingestion script.
@@ -310,6 +310,37 @@
   - Authored zero-cost unit and integration test suite in `tests/test_dataproc_kafka_tick_consumer.py`:
     - 46 tests validating duration parsing, config invariants, Spark/Kafka options, DDL schema parity, microstructure enrichments, corruption quarantine modes, SparkSession/readStream builders, stateful multi-partition micro-batch consumption from `MarketFeedGenerator` + `LocalKafkaProducerMock`, `starting_offsets="latest"` vs `"earliest"`, checkpoint restart recovery, watermark late-event dropping, Prometheus metrics, CLI runner modes, and `submit_job.sh`.
 - **Verification Status**: 259/259 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 13 - 2026-10-21
+- **Milestone Completed**: PySpark rolling VWAP (Volume-Weighted Average Price) and volatility band aggregations.
+- **Key Changes Implemented**:
+  - Implemented quantitative rolling VWAP and volatility band engine in `streaming/dataproc/vwap_aggregator.py`:
+    - `ROLLING_VWAP_SCHEMA_DDL` & `ROLLING_VWAP_STRUCT_SPEC`: Explicit Spark SQL DDL schema capturing sliding window aggregations (`ticker`, `asset_class`, `window_start`, `window_end`, `tick_count`, `open_price`, `high_price`, `low_price`, `close_price`, `total_volume`, `total_notional`, `vwap`, `price_stddev`, `price_variance`, `volatility_multiplier`, `upper_band`, `lower_band`, `bandwidth_bps`, `percent_b`, `is_upper_breach`, `is_lower_breach`, `volatility_spike`, `year`, `month`, `day`, `hour`, `computed_at`).
+    - `RollingVWAPStats`: High-precision financial microstructure dataclass with JSON roundtrip serialization.
+    - `RollingVWAPTelemetry`: Operational telemetry store tracking window evaluations, emitted aggregations, upper/lower band breaches, volatility spikes, and formatting Prometheus text exposition metrics (`dataproc_vwap_windows_computed_total`, `dataproc_rolling_vwap_price`, `dataproc_volatility_bandwidth_bps`, etc.).
+    - `RollingVWAPAggregator`: Zero-cost hermetic local aggregation engine computing:
+      1. Exact Volume-Weighted Average Price: $\text{VWAP} = \sum(P_i \times V_i) / \sum V_i$,
+      2. Sample variance and sample standard deviation: $\sigma = \sqrt{\frac{1}{N-1}\sum (P_i - \bar{P})^2}$,
+      3. Bollinger Volatility Bands: $\text{upper} = \text{vwap} + k \times \sigma$, $\text{lower} = \text{vwap} - k \times \sigma$ ($k=2.0$),
+      4. Volatility Bandwidth in basis points: $((\text{upper} - \text{lower}) / \text{vwap}) \times 10,000$,
+      5. $\%B$ indicator: $(\text{close} - \text{lower}) / (\text{upper} - \text{lower})$,
+      6. Upper band breakout breaches ($\text{close} > \text{upper}$), lower crash breaches ($\text{close} < \text{lower}$), and volatility spikes ($\sigma / \text{vwap} \ge 3\%$).
+      7. Sliding window interval generation across multiple tickers/asset classes and buffer memory bounding via `evict_older_than()`.
+    - Production PySpark Structured Streaming graph builders:
+      - `build_rolling_vwap_stream`: Windowed streaming aggregation (`groupBy(F.window("event_timestamp", window_duration, slide_duration), ticker, asset_class)`), deriving all VWAP and band columns with temporal date partitioning.
+      - `start_vwap_writer`: Structured Streaming query starting partitioned Snappy Parquet write to GCS Bronze VWAP path (`gs://trading-risk-bronze-{env}/vwap/`).
+  - Extended Dataproc streaming configuration in `streaming/dataproc/config.py`:
+    - Added parameters: `--vwap_window_duration` (default 5 min), `--vwap_slide_duration` (default 1 min), `--volatility_k_multiplier` (default 2.0), `--volatility_spike_threshold_pct` (default 3.0), `--vwap_output_path`, and `--vwap_checkpoint_location`.
+    - Validations: `vwap_slide_duration > 0`, `vwap_window_duration >= vwap_slide_duration`, positive multipliers and thresholds.
+    - Environment variable resolution and CLI flag parsing.
+  - Integrated rolling VWAP into `PySparkKafkaTickConsumer` (`streaming/dataproc/tick_consumer.py`):
+    - Added embedded `RollingVWAPAggregator` updating on each micro-batch trigger, accessible via `compute_vwap_windows()`.
+    - Extended `SparkStreamPlanDescriptor` with VWAP window durations, multipliers, and sink paths.
+    - Updated `run_tick_consumer.py` CLI runner (`--dry_run`, `--local_simulation`, and cluster execution) to output and execute VWAP queries.
+    - Updated Dataproc submission script `streaming/dataproc/submit_job.sh` with VWAP arguments.
+  - Comprehensive zero-cost test suites in `tests/test_dataproc_rolling_vwap.py` and `tests/test_dataproc_tick_streaming.py`:
+    - 60 new unit and integration tests verifying schema DDL parity, exact single-tick and multi-tick calculations, Chauvenet/Chebyshev sample dynamics, upper/lower band breaches, volatility spikes, multi-ticker isolation, memory eviction, Prometheus metrics, mock Spark builders, end-to-end generator-producer-consumer integration, and CLI runner execution.
+- **Verification Status**: 319/319 tests passed cleanly (`python -m pytest tests/ -v`).
 
 
 

@@ -91,6 +91,14 @@ class DataprocStreamingConfig:
     quarantine_output_path: Optional[str] = None
     output_mode: str = "append"
 
+    # Rolling VWAP & Volatility Bands Tuning
+    vwap_window_duration: str = "5 minutes"
+    vwap_slide_duration: str = "1 minute"
+    volatility_k_multiplier: float = 2.0
+    volatility_spike_threshold_pct: float = 3.0
+    vwap_output_path: Optional[str] = None
+    vwap_checkpoint_location: Optional[str] = None
+
     # Spark Execution & Tuning
     shuffle_partitions: int = 12
     enable_adaptive_query_execution: bool = True
@@ -116,6 +124,12 @@ class DataprocStreamingConfig:
             self.quarantine_output_path = (
                 f"gs://trading-risk-bronze-{self.environment}/quarantine/ticks/"
             )
+        if not self.vwap_output_path:
+            self.vwap_output_path = f"gs://trading-risk-bronze-{self.environment}/vwap/"
+        if not self.vwap_checkpoint_location:
+            self.vwap_checkpoint_location = (
+                f"gs://trading-risk-dataflow-staging-{self.environment}/checkpoints/vwap/"
+            )
 
     @property
     def watermark_delay_seconds(self) -> float:
@@ -126,6 +140,16 @@ class DataprocStreamingConfig:
     def trigger_interval_seconds(self) -> float:
         """Return micro-batch trigger interval converted to seconds."""
         return parse_duration_to_seconds(self.trigger_processing_time)
+
+    @property
+    def vwap_window_duration_seconds(self) -> float:
+        """Return rolling VWAP window duration converted to seconds."""
+        return parse_duration_to_seconds(self.vwap_window_duration)
+
+    @property
+    def vwap_slide_duration_seconds(self) -> float:
+        """Return rolling VWAP slide interval converted to seconds."""
+        return parse_duration_to_seconds(self.vwap_slide_duration)
 
     def validate(self) -> None:
         """Validate all streaming configuration invariants.
@@ -175,6 +199,23 @@ class DataprocStreamingConfig:
         # Validate duration expressions
         _ = self.watermark_delay_seconds
         _ = self.trigger_interval_seconds
+        vwap_win_sec = self.vwap_window_duration_seconds
+        vwap_slide_sec = self.vwap_slide_duration_seconds
+
+        if vwap_slide_sec <= 0:
+            raise ValueError(f"vwap_slide_duration must be strictly positive, got {vwap_slide_sec}")
+        if vwap_win_sec < vwap_slide_sec:
+            raise ValueError(
+                f"vwap_window_duration ({vwap_win_sec}s) must be >= vwap_slide_duration ({vwap_slide_sec}s)"
+            )
+        if self.volatility_k_multiplier <= 0:
+            raise ValueError(
+                f"volatility_k_multiplier must be > 0, got {self.volatility_k_multiplier}"
+            )
+        if self.volatility_spike_threshold_pct <= 0:
+            raise ValueError(
+                f"volatility_spike_threshold_pct must be > 0, got {self.volatility_spike_threshold_pct}"
+            )
 
         if self.output_mode not in ("append", "update", "complete"):
             raise ValueError(
@@ -240,6 +281,14 @@ class DataprocStreamingConfig:
             checkpoint_location=os.environ.get("SPARK_CHECKPOINT_LOCATION"),
             bronze_output_path=os.environ.get("GCS_BRONZE_OUTPUT_PATH"),
             quarantine_output_path=os.environ.get("GCS_QUARANTINE_OUTPUT_PATH"),
+            vwap_window_duration=os.environ.get("SPARK_VWAP_WINDOW_DURATION", "5 minutes"),
+            vwap_slide_duration=os.environ.get("SPARK_VWAP_SLIDE_DURATION", "1 minute"),
+            volatility_k_multiplier=float(os.environ.get("SPARK_VOLATILITY_K_MULTIPLIER", "2.0")),
+            volatility_spike_threshold_pct=float(
+                os.environ.get("SPARK_VOLATILITY_SPIKE_THRESHOLD_PCT", "3.0")
+            ),
+            vwap_output_path=os.environ.get("GCS_VWAP_OUTPUT_PATH"),
+            vwap_checkpoint_location=os.environ.get("SPARK_VWAP_CHECKPOINT_LOCATION"),
             shuffle_partitions=int(os.environ.get("SPARK_SHUFFLE_PARTITIONS", "12")),
         )
 
@@ -271,6 +320,12 @@ class DataprocStreamingConfig:
         parser.add_argument("--checkpoint_location", default=None)
         parser.add_argument("--bronze_output_path", default=None)
         parser.add_argument("--quarantine_output_path", default=None)
+        parser.add_argument("--vwap_window_duration", default="5 minutes")
+        parser.add_argument("--vwap_slide_duration", default="1 minute")
+        parser.add_argument("--volatility_k_multiplier", type=float, default=2.0)
+        parser.add_argument("--volatility_spike_threshold_pct", type=float, default=3.0)
+        parser.add_argument("--vwap_output_path", default=None)
+        parser.add_argument("--vwap_checkpoint_location", default=None)
         parser.add_argument("--shuffle_partitions", type=int, default=12)
 
         parsed, _ = parser.parse_known_args(argv)
@@ -293,6 +348,12 @@ class DataprocStreamingConfig:
             checkpoint_location=parsed.checkpoint_location,
             bronze_output_path=parsed.bronze_output_path,
             quarantine_output_path=parsed.quarantine_output_path,
+            vwap_window_duration=parsed.vwap_window_duration,
+            vwap_slide_duration=parsed.vwap_slide_duration,
+            volatility_k_multiplier=parsed.volatility_k_multiplier,
+            volatility_spike_threshold_pct=parsed.volatility_spike_threshold_pct,
+            vwap_output_path=parsed.vwap_output_path,
+            vwap_checkpoint_location=parsed.vwap_checkpoint_location,
             shuffle_partitions=parsed.shuffle_partitions,
         )
         config.validate()

@@ -26,6 +26,12 @@ from streaming.dataproc.schema import (
     get_pyspark_tick_schema,
     parse_and_validate_kafka_record,
 )
+from streaming.dataproc.vwap_aggregator import (
+    RollingVWAPAggregator,
+    RollingVWAPStats,
+    build_rolling_vwap_stream,
+    start_vwap_writer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +117,7 @@ class MicroBatchResult:
     committed_offsets: Dict[str, Dict[int, int]]
     watermark_epoch_sec: float
     watermark_iso: Optional[str]
+    vwap_stats: List[RollingVWAPStats] = field(default_factory=list)
 
 
 @dataclass
@@ -130,6 +137,11 @@ class SparkStreamPlanDescriptor:
     checkpoint_location: str
     trigger_processing_time: str
     output_mode: str
+    vwap_window_duration: str = "5 minutes"
+    vwap_slide_duration: str = "1 minute"
+    volatility_k_multiplier: float = 2.0
+    volatility_spike_threshold_pct: float = 3.0
+    vwap_output_path: str = ""
 
 
 class PySparkKafkaTickConsumer:
@@ -147,6 +159,7 @@ class PySparkKafkaTickConsumer:
         self.config = config or DataprocStreamingConfig()
         self.config.validate()
         self.telemetry = StreamingQueryTelemetry()
+        self.vwap_aggregator = RollingVWAPAggregator(config=self.config)
 
         # Stateful consumer state: topic -> {partition_id -> next_offset_to_read}
         self._offsets: Dict[str, Dict[int, int]] = {}
@@ -232,7 +245,15 @@ class PySparkKafkaTickConsumer:
             checkpoint_location=str(self.config.checkpoint_location),
             trigger_processing_time=self.config.trigger_processing_time,
             output_mode=self.config.output_mode,
+            vwap_window_duration=self.config.vwap_window_duration,
+            vwap_slide_duration=self.config.vwap_slide_duration,
+            volatility_k_multiplier=self.config.volatility_k_multiplier,
+            volatility_spike_threshold_pct=self.config.volatility_spike_threshold_pct,
+            vwap_output_path=str(self.config.vwap_output_path),
         )
+
+    build_rolling_vwap_stream = staticmethod(build_rolling_vwap_stream)
+    start_vwap_writer = staticmethod(start_vwap_writer)
 
     @staticmethod
     def build_parsed_tick_streams(
@@ -342,7 +363,7 @@ class PySparkKafkaTickConsumer:
             return valid_df, corrupt_df
 
     @staticmethod
-    def start_Bronze_and_quarantine_writers(
+    def start_bronze_and_quarantine_writers(
         valid_df: Any,
         corrupt_df: Any,
         config: DataprocStreamingConfig,
@@ -373,6 +394,9 @@ class PySparkKafkaTickConsumer:
         )
 
         return bronze_query, quarantine_query
+
+    # Backward compatibility alias
+    start_Bronze_and_quarantine_writers = start_bronze_and_quarantine_writers
 
     # -------------------------------------------------------------------------
     # Zero-Cost Hermetic Local Micro-Batch Execution Engine
@@ -654,6 +678,7 @@ class PySparkKafkaTickConsumer:
         # Update sink buffers and telemetry counters
         self.bronze_sink_records.extend(valid_records)
         self.quarantine_sink_records.extend(corrupt_records)
+        self.vwap_aggregator.add_ticks(valid_records)
 
         self.telemetry.batches_processed += 1
         self.telemetry.records_received += len(envelopes)
@@ -661,6 +686,9 @@ class PySparkKafkaTickConsumer:
         self.telemetry.corrupt_records_quarantined += len(corrupt_records)
         self.telemetry.late_records_dropped += len(dropped_late_records)
         self.telemetry.partition_offsets = {t: dict(p) for t, p in self._offsets.items()}
+
+        # Compute rolling VWAP and volatility bands across accumulated ticks
+        vwap_stats = self.vwap_aggregator.compute_windows()
 
         # Persist checkpoint to disk if local path configured
         self._persist_local_checkpoint()
@@ -674,12 +702,20 @@ class PySparkKafkaTickConsumer:
             committed_offsets={t: dict(p) for t, p in self._offsets.items()},
             watermark_epoch_sec=self.telemetry.current_watermark_epoch_sec,
             watermark_iso=self.telemetry.current_watermark_iso,
+            vwap_stats=vwap_stats,
         )
 
         if foreach_batch_fn is not None:
             foreach_batch_fn(result)
 
         return result
+
+    def compute_vwap_windows(
+        self,
+        reference_time: Optional[datetime] = None,
+    ) -> List[RollingVWAPStats]:
+        """Compute rolling VWAP and volatility bands across all accumulated valid ticks."""
+        return self.vwap_aggregator.compute_windows(reference_time=reference_time)
 
     def drain_producer(
         self,

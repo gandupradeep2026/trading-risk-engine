@@ -62,6 +62,7 @@ def run_local_simulation(
 
     consumer = PySparkKafkaTickConsumer(config=sim_config)
     batches = consumer.drain_producer(mock_broker)
+    vwap_stats = consumer.compute_vwap_windows()
 
     return {
         "mode": "local_simulation",
@@ -69,6 +70,9 @@ def run_local_simulation(
         "plan_descriptor": consumer.build_stream_plan_descriptor().__dict__,
         "batches_executed": len(batches),
         "telemetry": consumer.telemetry.to_dict(),
+        "vwap_stats_count": len(vwap_stats),
+        "vwap_stats": [s.to_dict() for s in vwap_stats],
+        "vwap_telemetry": consumer.vwap_aggregator.telemetry.to_dict(),
     }
 
 
@@ -124,13 +128,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     spark = PySparkKafkaTickConsumer.build_spark_session(config)
     raw_df = PySparkKafkaTickConsumer.build_kafka_read_stream(spark, config)
     valid_df, corrupt_df = PySparkKafkaTickConsumer.build_parsed_tick_streams(raw_df, config)
-    bronze_query, quarantine_query = PySparkKafkaTickConsumer.start_Bronze_and_quarantine_writers(
+    bronze_query, quarantine_query = PySparkKafkaTickConsumer.start_bronze_and_quarantine_writers(
         valid_df, corrupt_df, config
     )
+    vwap_df = PySparkKafkaTickConsumer.build_rolling_vwap_stream(valid_df, config)
+    vwap_query = PySparkKafkaTickConsumer.start_vwap_writer(vwap_df, config)
     logger.info(
-        "Started Dataproc Structured Streaming queries: bronze=%s, quarantine=%s",
+        "Started Dataproc Structured Streaming queries: bronze=%s, quarantine=%s, vwap=%s",
         bronze_query,
         quarantine_query,
+        vwap_query,
     )
     spark.streams.awaitAnyTermination()
     return 0

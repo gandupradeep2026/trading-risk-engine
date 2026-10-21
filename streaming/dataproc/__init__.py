@@ -19,6 +19,16 @@ from streaming.dataproc.tick_consumer import (
     SparkStreamPlanDescriptor,
     StreamingQueryTelemetry,
 )
+from streaming.dataproc.vwap_aggregator import (
+    ROLLING_VWAP_SCHEMA_DDL,
+    ROLLING_VWAP_STRUCT_SPEC,
+    RollingVWAPAggregator,
+    RollingVWAPStats,
+    RollingVWAPTelemetry,
+    build_rolling_vwap_stream,
+    get_pyspark_vwap_schema,
+    start_vwap_writer,
+)
 
 __all__ = [
     "DataprocStreamingConfig",
@@ -37,4 +47,12 @@ __all__ = [
     "MicroBatchResult",
     "SparkStreamPlanDescriptor",
     "PySparkKafkaTickConsumer",
+    "ROLLING_VWAP_SCHEMA_DDL",
+    "ROLLING_VWAP_STRUCT_SPEC",
+    "get_pyspark_vwap_schema",
+    "RollingVWAPStats",
+    "RollingVWAPTelemetry",
+    "RollingVWAPAggregator",
+    "build_rolling_vwap_stream",
+    "start_vwap_writer",
 ]
