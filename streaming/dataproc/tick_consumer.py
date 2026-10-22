@@ -19,6 +19,17 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from streaming.dataproc.config import DataprocStreamingConfig
+from streaming.dataproc.parquet_sink import (
+    DEFAULT_PARQUET_TICK_PARTITIONS,
+    DEFAULT_PARQUET_VWAP_PARTITIONS,
+    LocalParquetDatasetWriter,
+    ParquetSinkConfig,
+    ParquetSinkTelemetry,
+    start_parquet_tick_sink,
+    start_parquet_vwap_sink,
+    start_partitioned_parquet_sink,
+    start_quarantine_json_sink,
+)
 from streaming.dataproc.schema import (
     MARKET_TICK_SCHEMA_DDL,
     CorruptTickRecord,
@@ -30,7 +41,6 @@ from streaming.dataproc.vwap_aggregator import (
     RollingVWAPAggregator,
     RollingVWAPStats,
     build_rolling_vwap_stream,
-    start_vwap_writer,
 )
 
 logger = logging.getLogger(__name__)
@@ -142,6 +152,12 @@ class SparkStreamPlanDescriptor:
     volatility_k_multiplier: float = 2.0
     volatility_spike_threshold_pct: float = 3.0
     vwap_output_path: str = ""
+    parquet_compression_codec: str = "snappy"
+    parquet_max_records_per_file: int = 50000
+    gcs_committer_class: str = "org.apache.spark.internal.io.cloud.BindingParquetOutputCommitter"
+    vwap_partition_by_columns: List[str] = field(
+        default_factory=lambda: list(DEFAULT_PARQUET_VWAP_PARTITIONS)
+    )
 
 
 class PySparkKafkaTickConsumer:
@@ -160,6 +176,10 @@ class PySparkKafkaTickConsumer:
         self.config.validate()
         self.telemetry = StreamingQueryTelemetry()
         self.vwap_aggregator = RollingVWAPAggregator(config=self.config)
+        self.parquet_writer = LocalParquetDatasetWriter(scratch_dir=self.config.parquet_output_dir)
+        self.vwap_parquet_writer = LocalParquetDatasetWriter(scratch_dir=self.config.parquet_output_dir)
+        self.parquet_telemetry = self.parquet_writer.telemetry
+        self.vwap_parquet_telemetry = self.vwap_parquet_writer.telemetry
 
         # Stateful consumer state: topic -> {partition_id -> next_offset_to_read}
         self._offsets: Dict[str, Dict[int, int]] = {}
@@ -239,7 +259,7 @@ class PySparkKafkaTickConsumer:
                 "hour",
                 "ingested_at",
             ],
-            partition_by_columns=["year", "month", "day", "asset_class"],
+            partition_by_columns=list(self.config.parquet_partition_columns),
             bronze_output_path=str(self.config.bronze_output_path),
             quarantine_output_path=str(self.config.quarantine_output_path),
             checkpoint_location=str(self.config.checkpoint_location),
@@ -250,10 +270,15 @@ class PySparkKafkaTickConsumer:
             volatility_k_multiplier=self.config.volatility_k_multiplier,
             volatility_spike_threshold_pct=self.config.volatility_spike_threshold_pct,
             vwap_output_path=str(self.config.vwap_output_path),
+            parquet_compression_codec=self.config.parquet_compression_codec,
+            parquet_max_records_per_file=self.config.parquet_max_records_per_file,
+            gcs_committer_class="org.apache.spark.internal.io.cloud.BindingParquetOutputCommitter",
+            vwap_partition_by_columns=list(self.config.vwap_parquet_partition_columns),
         )
 
     build_rolling_vwap_stream = staticmethod(build_rolling_vwap_stream)
-    start_vwap_writer = staticmethod(start_vwap_writer)
+    start_vwap_writer = staticmethod(start_parquet_vwap_sink)
+    start_parquet_tick_sink = staticmethod(start_parquet_tick_sink)
 
     @staticmethod
     def build_parsed_tick_streams(
@@ -369,30 +394,8 @@ class PySparkKafkaTickConsumer:
         config: DataprocStreamingConfig,
     ) -> Tuple[Any, Any]:
         """Configure and start the Bronze GCS Parquet writer and Quarantine JSON writer."""
-        bronze_checkpoint = f"{config.checkpoint_location.rstrip('/')}/bronze"
-        quarantine_checkpoint = f"{config.checkpoint_location.rstrip('/')}/quarantine"
-
-        bronze_query = (
-            valid_df.writeStream.format("parquet")
-            .outputMode(config.output_mode)
-            .option("path", str(config.bronze_output_path))
-            .option("checkpointLocation", bronze_checkpoint)
-            .partitionBy("year", "month", "day", "asset_class")
-            .trigger(processingTime=config.trigger_processing_time)
-            .queryName(f"{config.app_name}-bronze-sink")
-            .start()
-        )
-
-        quarantine_query = (
-            corrupt_df.writeStream.format("json")
-            .outputMode("append")
-            .option("path", str(config.quarantine_output_path))
-            .option("checkpointLocation", quarantine_checkpoint)
-            .trigger(processingTime=config.trigger_processing_time)
-            .queryName(f"{config.app_name}-quarantine-sink")
-            .start()
-        )
-
+        bronze_query = start_parquet_tick_sink(valid_df, config)
+        quarantine_query = start_quarantine_json_sink(corrupt_df, config)
         return bronze_query, quarantine_query
 
     # Backward compatibility alias
@@ -705,10 +708,75 @@ class PySparkKafkaTickConsumer:
             vwap_stats=vwap_stats,
         )
 
+        # Automatically write to partitioned Snappy Parquet if output directory is configured
+        if self.config.parquet_output_dir:
+            ticks_dir = f"{self.config.parquet_output_dir.rstrip('/')}/ticks"
+            self.write_micro_batch_to_parquet(result, output_dir=ticks_dir)
+            if vwap_stats:
+                vwap_dir = f"{self.config.parquet_output_dir.rstrip('/')}/vwap"
+                self.write_vwap_to_parquet(vwap_stats, output_dir=vwap_dir)
+
         if foreach_batch_fn is not None:
             foreach_batch_fn(result)
 
         return result
+
+    def write_micro_batch_to_parquet(
+        self,
+        batch_result: MicroBatchResult,
+        output_dir: Optional[Union[str, Path]] = None,
+    ) -> Dict[str, Any]:
+        """Write valid ticks from a micro-batch into partitioned Snappy-compressed Parquet.
+
+        Args:
+            batch_result: The MicroBatchResult to persist.
+            output_dir: Destination directory (local path or gs:// URI). Defaults to
+                config.parquet_output_dir/ticks or config.bronze_output_path.
+
+        Returns:
+            Dictionary summary from LocalParquetDatasetWriter.
+        """
+        dest_dir = output_dir or (
+            f"{self.config.parquet_output_dir.rstrip('/')}/ticks"
+            if self.config.parquet_output_dir
+            else self.config.bronze_output_path
+        )
+        return self.parquet_writer.write_ticks(
+            records=batch_result.valid_records,
+            output_dir=dest_dir,
+            partition_cols=self.config.parquet_partition_columns,
+            compression=self.config.parquet_compression_codec,
+        )
+
+    def write_vwap_to_parquet(
+        self,
+        vwap_stats: Optional[List[RollingVWAPStats]] = None,
+        output_dir: Optional[Union[str, Path]] = None,
+    ) -> Dict[str, Any]:
+        """Write rolling VWAP summaries into partitioned Snappy-compressed Parquet.
+
+        Args:
+            vwap_stats: Optional list of RollingVWAPStats (defaults to computing all windows).
+            output_dir: Destination directory. Defaults to config.parquet_output_dir/vwap
+                or config.vwap_output_path.
+
+        Returns:
+            Dictionary summary from LocalParquetDatasetWriter.
+        """
+        stats_to_write = (
+            vwap_stats if vwap_stats is not None else self.compute_vwap_windows()
+        )
+        dest_dir = output_dir or (
+            f"{self.config.parquet_output_dir.rstrip('/')}/vwap"
+            if self.config.parquet_output_dir
+            else self.config.vwap_output_path
+        )
+        return self.vwap_parquet_writer.write_vwap_stats(
+            records=stats_to_write,
+            output_dir=dest_dir,
+            partition_cols=self.config.vwap_parquet_partition_columns,
+            compression=self.config.parquet_compression_codec,
+        )
 
     def compute_vwap_windows(
         self,

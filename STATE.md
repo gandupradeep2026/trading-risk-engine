@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 14
+- **Current Milestone Target**: Day 15
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -22,7 +22,7 @@
 - [x] **Day 11**: Comprehensive Apache Beam unit tests using TestStream and mock events.
 - [x] **Day 12**: Dataproc PySpark streaming application consuming continuous tick records from Kafka.
 - [x] **Day 13**: PySpark rolling VWAP (Volume-Weighted Average Price) and volatility band aggregations.
-- [ ] **Day 14**: PySpark streaming sink writing partitioned Snappy-compressed Parquet directly to GCS.
+- [x] **Day 14**: PySpark streaming sink writing partitioned Snappy-compressed Parquet directly to GCS.
 - [ ] **Day 15**: Cloud Composer (Apache Airflow) DAG scaffolding, GCP connections, and notification hooks.
 - [ ] **Day 16**: Databricks workspace configs and Delta Lake Bronze layer ingestion script.
 - [ ] **Day 17**: Databricks Silver layer cleansing, schema enforcement, and deduplication notebooks.
@@ -341,6 +341,35 @@
   - Comprehensive zero-cost test suites in `tests/test_dataproc_rolling_vwap.py` and `tests/test_dataproc_tick_streaming.py`:
     - 60 new unit and integration tests verifying schema DDL parity, exact single-tick and multi-tick calculations, Chauvenet/Chebyshev sample dynamics, upper/lower band breaches, volatility spikes, multi-ticker isolation, memory eviction, Prometheus metrics, mock Spark builders, end-to-end generator-producer-consumer integration, and CLI runner execution.
 - **Verification Status**: 319/319 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 14 - 2026-10-22
+- **Milestone Completed**: PySpark streaming sink writing partitioned Snappy-compressed Parquet directly to GCS.
+- **Key Changes Implemented**:
+  - Authored production Parquet streaming sink module in `streaming/dataproc/parquet_sink.py`:
+    - `ParquetSinkConfig`: Enterprise configuration dataclass with Snappy compression codec, max records per file (`max_records_per_file=50000`), Hive partition columns (`year`, `month`, `day`, `asset_class`), and GCS direct committer settings (`org.apache.spark.internal.io.cloud.BindingParquetOutputCommitter`).
+    - Explicit PyArrow schemas (`TICK_PARQUET_ARROW_SCHEMA`, `VWAP_PARQUET_ARROW_SCHEMA`) strictly aligned with Spark SQL DDL schemas.
+    - `LocalParquetDatasetWriter`: Zero-cost hermetic local PyArrow dataset writer producing true partitioned Snappy Parquet files with Hive-style directory hierarchies (`year=YYYY/month=MM/day=DD/asset_class=...`), dictionary encoding, and telemetry tracking.
+    - `ParquetSinkTelemetry`: Real-time operational metric tracker recording written records, created files, uncompressed vs compressed byte volumes, compression ratios, and formatting Prometheus text exposition metrics (`dataproc_parquet_sink_records_written_total`, `dataproc_parquet_sink_files_written_total`, `dataproc_parquet_sink_compressed_bytes_total`, `dataproc_parquet_sink_compression_ratio`, `dataproc_parquet_sink_active_partitions`).
+    - Parquet inspection & verification utilities (`verify_snappy_parquet_file` validating that every column chunk in every row group has compression codec `SNAPPY`, `extract_partition_keys_from_path`, `resolve_storage_path`, `read_partitioned_parquet_dataset`).
+    - PySpark Structured Streaming graph builders: `start_partitioned_parquet_sink`, `start_parquet_tick_sink`, `start_parquet_vwap_sink`, `start_quarantine_json_sink`.
+  - Extended Dataproc streaming configuration in `streaming/dataproc/config.py`:
+    - Added parameters: `--parquet_compression_codec` (default `snappy`), `--parquet_max_records_per_file` (default 50,000), `--parquet_output_dir`, `parquet_partition_columns`, `vwap_parquet_partition_columns`, `gcs_fs_impl` (`com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem`), `gcs_abstract_fs_impl`, `spark_file_sink_compact_interval` (10).
+    - Added GCS Hadoop connector properties, file sink log compaction, and Parquet options into `to_spark_conf_dict()`.
+    - Added validations and CLI / environment variable loaders.
+  - Integrated Parquet sinks into `PySparkKafkaTickConsumer` (`streaming/dataproc/tick_consumer.py`):
+    - Added embedded `LocalParquetDatasetWriter` and `ParquetSinkTelemetry` for both Bronze ticks and rolling VWAP.
+    - Added `write_micro_batch_to_parquet` and `write_vwap_to_parquet` methods with automated partitioning and Snappy compression.
+    - Updated `start_bronze_and_quarantine_writers` and `start_vwap_writer` to route streams through `start_parquet_tick_sink` and `start_parquet_vwap_sink`.
+    - Extended `SparkStreamPlanDescriptor` with Parquet compression, max records per file, and GCS committer properties.
+  - Updated CLI runner in `streaming/dataproc/run_tick_consumer.py`:
+    - Enhanced `--local_simulation` and `--dry_run` modes to output Parquet execution plans and write partitioned Snappy Parquet datasets into `--parquet_output_dir`.
+  - Updated Dataproc submission script `streaming/dataproc/submit_job.sh`:
+    - Added Spark properties for Snappy Parquet compression, GCS filesystem, and Parquet CLI flags.
+  - Package exports updated in `streaming/dataproc/__init__.py`.
+  - Authored comprehensive zero-cost unit and integration test suite in `tests/test_dataproc_gcs_parquet_sink.py`:
+    - 33 unit and integration tests verifying config invariants, SparkConf GCS committer/Snappy properties, schema parity, Hive partition path extraction, storage path resolution, Snappy Parquet metadata verification, non-Snappy rejection, local dataset writing with multi-asset partitions, empty list handling, custom 5-level partition hierarchies, rolling VWAP Parquet writing with Bollinger bands and breach flags, large batch compression ratio (> 1.0), multi-batch telemetry monotonicity, Prometheus text formatting, mock PySpark streaming graph builders, end-to-end generator-producer-consumer-parquet integration, and CLI runner execution.
+- **Verification Status**: 352/352 tests passed cleanly (`python -m pytest tests/ -v`).
+
 
 
 

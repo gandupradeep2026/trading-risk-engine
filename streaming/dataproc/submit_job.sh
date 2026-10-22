@@ -27,7 +27,7 @@ gcloud dataproc jobs submit pyspark \
   --region="${REGION}" \
   --cluster="${CLUSTER_NAME}" \
   --py-files="streaming.zip,ingestion.zip" \
-  --properties="spark.jars.packages=${SPARK_KAFKA_PACKAGE},spark.sql.adaptive.enabled=true,spark.streaming.backpressure.enabled=true,spark.dynamicAllocation.enabled=false" \
+  --properties="spark.jars.packages=${SPARK_KAFKA_PACKAGE},spark.sql.parquet.compression.codec=snappy,spark.hadoop.fs.gs.impl=com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem,spark.sql.streaming.fileSink.log.compactInterval=10,spark.sql.adaptive.enabled=true,spark.streaming.backpressure.enabled=true,spark.dynamicAllocation.enabled=false" \
   -- \
   --project_id="${PROJECT_ID}" \
   --environment="${ENVIRONMENT}" \
@@ -42,4 +42,6 @@ gcloud dataproc jobs submit pyspark \
   --vwap_window_duration="5 minutes" \
   --vwap_slide_duration="1 minute" \
   --volatility_k_multiplier=2.0 \
-  --volatility_spike_threshold_pct=3.0
+  --volatility_spike_threshold_pct=3.0 \
+  --parquet_compression_codec="snappy" \
+  --parquet_max_records_per_file=50000

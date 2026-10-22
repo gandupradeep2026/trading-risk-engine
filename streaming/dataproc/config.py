@@ -6,7 +6,7 @@ Kafka consumer offset/rate-limiting controls.
 """
 
 import argparse
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import json
 import os
 import re
@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 ALLOWED_ENVIRONMENTS = {"dev", "staging", "prod"}
 ALLOWED_SECURITY_PROTOCOLS = {"PLAINTEXT", "SSL", "SASL_PLAINTEXT", "SASL_SSL"}
+ALLOWED_PARQUET_CODECS = {"snappy", "gzip", "zstd", "none", "uncompressed"}
 
 
 def parse_duration_to_seconds(duration_str: str) -> float:
@@ -98,6 +99,20 @@ class DataprocStreamingConfig:
     volatility_spike_threshold_pct: float = 3.0
     vwap_output_path: Optional[str] = None
     vwap_checkpoint_location: Optional[str] = None
+
+    # Parquet GCS Sink & File Sizing Controls
+    parquet_compression_codec: str = "snappy"
+    parquet_max_records_per_file: int = 50000
+    parquet_partition_columns: List[str] = field(
+        default_factory=lambda: ["year", "month", "day", "asset_class"]
+    )
+    vwap_parquet_partition_columns: List[str] = field(
+        default_factory=lambda: ["year", "month", "day", "asset_class"]
+    )
+    gcs_fs_impl: str = "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem"
+    gcs_abstract_fs_impl: str = "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS"
+    spark_file_sink_compact_interval: int = 10
+    parquet_output_dir: Optional[str] = None
 
     # Spark Execution & Tuning
     shuffle_partitions: int = 12
@@ -217,6 +232,25 @@ class DataprocStreamingConfig:
                 f"volatility_spike_threshold_pct must be > 0, got {self.volatility_spike_threshold_pct}"
             )
 
+        # Validate Parquet GCS sink invariants
+        if self.parquet_compression_codec.lower() not in ALLOWED_PARQUET_CODECS:
+            raise ValueError(
+                f"Invalid parquet_compression_codec '{self.parquet_compression_codec}'. "
+                f"Must be one of {sorted(ALLOWED_PARQUET_CODECS)}"
+            )
+        if self.parquet_max_records_per_file <= 0:
+            raise ValueError(
+                f"parquet_max_records_per_file must be > 0, got {self.parquet_max_records_per_file}"
+            )
+        if not self.parquet_partition_columns:
+            raise ValueError("parquet_partition_columns must be a non-empty list of columns")
+        if not self.vwap_parquet_partition_columns:
+            raise ValueError("vwap_parquet_partition_columns must be a non-empty list of columns")
+        if self.spark_file_sink_compact_interval <= 0:
+            raise ValueError(
+                f"spark_file_sink_compact_interval must be > 0, got {self.spark_file_sink_compact_interval}"
+            )
+
         if self.output_mode not in ("append", "update", "complete"):
             raise ValueError(
                 f"Unsupported Spark output_mode '{self.output_mode}'. Must be append, update, or complete."
@@ -233,9 +267,15 @@ class DataprocStreamingConfig:
             "spark.sql.streaming.checkpointLocation": str(self.checkpoint_location),
             "spark.sql.streaming.schemaInference": "false",
             "spark.sql.session.timeZone": "UTC",
-            "spark.sql.parquet.compression.codec": "snappy",
+            "spark.sql.parquet.compression.codec": str(self.parquet_compression_codec).lower(),
             "spark.jars.packages": self.spark_kafka_package,
-            "spark.hadoop.fs.gs.impl": "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem",
+            "spark.hadoop.fs.gs.impl": self.gcs_fs_impl,
+            "spark.hadoop.fs.AbstractFileSystem.gs.impl": self.gcs_abstract_fs_impl,
+            "spark.hadoop.fs.gs.project.id": self.project_id,
+            "spark.sql.streaming.fileSink.log.compactInterval": str(self.spark_file_sink_compact_interval),
+            "spark.sql.parquet.writeLegacyFormat": "false",
+            "spark.sql.sources.partitionOverwriteMode": "dynamic",
+            "spark.sql.parquet.output.committer.class": "org.apache.spark.internal.io.cloud.BindingParquetOutputCommitter",
             "spark.hadoop.google.cloud.auth.service.account.enable": "true",
         }
 
@@ -289,6 +329,11 @@ class DataprocStreamingConfig:
             ),
             vwap_output_path=os.environ.get("GCS_VWAP_OUTPUT_PATH"),
             vwap_checkpoint_location=os.environ.get("SPARK_VWAP_CHECKPOINT_LOCATION"),
+            parquet_compression_codec=os.environ.get("SPARK_PARQUET_COMPRESSION_CODEC", "snappy"),
+            parquet_max_records_per_file=int(
+                os.environ.get("SPARK_PARQUET_MAX_RECORDS_PER_FILE", "50000")
+            ),
+            parquet_output_dir=os.environ.get("PARQUET_OUTPUT_DIR"),
             shuffle_partitions=int(os.environ.get("SPARK_SHUFFLE_PARTITIONS", "12")),
         )
 
@@ -326,6 +371,9 @@ class DataprocStreamingConfig:
         parser.add_argument("--volatility_spike_threshold_pct", type=float, default=3.0)
         parser.add_argument("--vwap_output_path", default=None)
         parser.add_argument("--vwap_checkpoint_location", default=None)
+        parser.add_argument("--parquet_compression_codec", default="snappy")
+        parser.add_argument("--parquet_max_records_per_file", type=int, default=50000)
+        parser.add_argument("--parquet_output_dir", default=None)
         parser.add_argument("--shuffle_partitions", type=int, default=12)
 
         parsed, _ = parser.parse_known_args(argv)
@@ -354,6 +402,9 @@ class DataprocStreamingConfig:
             volatility_spike_threshold_pct=parsed.volatility_spike_threshold_pct,
             vwap_output_path=parsed.vwap_output_path,
             vwap_checkpoint_location=parsed.vwap_checkpoint_location,
+            parquet_compression_codec=parsed.parquet_compression_codec,
+            parquet_max_records_per_file=parsed.parquet_max_records_per_file,
+            parquet_output_dir=parsed.parquet_output_dir,
             shuffle_partitions=parsed.shuffle_partitions,
         )
         config.validate()

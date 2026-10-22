@@ -1,6 +1,27 @@
 """Dataproc PySpark Structured Streaming Package for Real-Time Market Tick Processing."""
 
-from streaming.dataproc.config import DataprocStreamingConfig, parse_duration_to_seconds
+from streaming.dataproc.config import (
+    ALLOWED_PARQUET_CODECS,
+    DataprocStreamingConfig,
+    parse_duration_to_seconds,
+)
+from streaming.dataproc.parquet_sink import (
+    DEFAULT_PARQUET_TICK_PARTITIONS,
+    DEFAULT_PARQUET_VWAP_PARTITIONS,
+    TICK_PARQUET_ARROW_SCHEMA,
+    VWAP_PARQUET_ARROW_SCHEMA,
+    LocalParquetDatasetWriter,
+    ParquetSinkConfig,
+    ParquetSinkTelemetry,
+    extract_partition_keys_from_path,
+    read_partitioned_parquet_dataset,
+    resolve_storage_path,
+    start_parquet_tick_sink,
+    start_parquet_vwap_sink,
+    start_partitioned_parquet_sink,
+    start_quarantine_json_sink,
+    verify_snappy_parquet_file,
+)
 from streaming.dataproc.schema import (
     KAFKA_ENVELOPE_COLUMNS,
     MARKET_TICK_SCHEMA_DDL,
@@ -31,6 +52,7 @@ from streaming.dataproc.vwap_aggregator import (
 )
 
 __all__ = [
+    "ALLOWED_PARQUET_CODECS",
     "DataprocStreamingConfig",
     "parse_duration_to_seconds",
     "MARKET_TICK_SCHEMA_DDL",
@@ -55,4 +77,19 @@ __all__ = [
     "RollingVWAPAggregator",
     "build_rolling_vwap_stream",
     "start_vwap_writer",
+    "DEFAULT_PARQUET_TICK_PARTITIONS",
+    "DEFAULT_PARQUET_VWAP_PARTITIONS",
+    "TICK_PARQUET_ARROW_SCHEMA",
+    "VWAP_PARQUET_ARROW_SCHEMA",
+    "ParquetSinkConfig",
+    "ParquetSinkTelemetry",
+    "LocalParquetDatasetWriter",
+    "start_partitioned_parquet_sink",
+    "start_parquet_tick_sink",
+    "start_parquet_vwap_sink",
+    "start_quarantine_json_sink",
+    "verify_snappy_parquet_file",
+    "read_partitioned_parquet_dataset",
+    "extract_partition_keys_from_path",
+    "resolve_storage_path",
 ]

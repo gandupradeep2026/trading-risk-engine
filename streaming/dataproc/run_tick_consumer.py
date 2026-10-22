@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 from ingestion.kafka.producer import KafkaTickProducer, LocalKafkaProducerMock, ProducerConfig
 from ingestion.market_feed import MarketFeedGenerator
 from streaming.dataproc.config import DataprocStreamingConfig
+from streaming.dataproc.parquet_sink import verify_snappy_parquet_file
 from streaming.dataproc.tick_consumer import PySparkKafkaTickConsumer
 
 logger = logging.getLogger(__name__)
@@ -26,8 +27,10 @@ def run_local_simulation(
     config: DataprocStreamingConfig,
     num_ticks: int = 100,
     seed: int = 42,
+    parquet_output_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Execute a deterministic local streaming simulation with synthetic market ticks."""
+    target_parquet_dir = parquet_output_dir or config.parquet_output_dir
     sim_config = DataprocStreamingConfig(
         project_id=config.project_id,
         environment=config.environment,
@@ -44,6 +47,9 @@ def run_local_simulation(
         checkpoint_location=config.checkpoint_location,
         bronze_output_path=config.bronze_output_path,
         quarantine_output_path=config.quarantine_output_path,
+        parquet_compression_codec=config.parquet_compression_codec,
+        parquet_max_records_per_file=config.parquet_max_records_per_file,
+        parquet_output_dir=target_parquet_dir,
     )
 
     topic = sim_config.kafka_subscribe_topics.split(",")[0].strip()
@@ -64,6 +70,21 @@ def run_local_simulation(
     batches = consumer.drain_producer(mock_broker)
     vwap_stats = consumer.compute_vwap_windows()
 
+    parquet_summary: Dict[str, Any] = {}
+    if target_parquet_dir:
+        ticks_dir = f"{target_parquet_dir.rstrip('/')}/ticks"
+        vwap_dir = f"{target_parquet_dir.rstrip('/')}/vwap"
+        # If not written during micro-batches, persist accumulated batches
+        if consumer.parquet_telemetry.records_written == 0:
+            for b in batches:
+                consumer.write_micro_batch_to_parquet(b, output_dir=ticks_dir)
+        if consumer.vwap_parquet_telemetry.records_written == 0 and vwap_stats:
+            consumer.write_vwap_to_parquet(vwap_stats, output_dir=vwap_dir)
+        parquet_summary = {
+            "tick_parquet": consumer.parquet_telemetry.to_dict(),
+            "vwap_parquet": consumer.vwap_parquet_telemetry.to_dict(),
+        }
+
     return {
         "mode": "local_simulation",
         "config": sim_config.to_dict(),
@@ -73,6 +94,7 @@ def run_local_simulation(
         "vwap_stats_count": len(vwap_stats),
         "vwap_stats": [s.to_dict() for s in vwap_stats],
         "vwap_telemetry": consumer.vwap_aggregator.telemetry.to_dict(),
+        "parquet_summary": parquet_summary,
     }
 
 
