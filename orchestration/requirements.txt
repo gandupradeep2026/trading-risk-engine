@@ -1,0 +1,7 @@
+# Trading Risk Engine - Cloud Composer / Apache Airflow Requirements
+apache-airflow-providers-google>=10.15.0
+apache-airflow-providers-databricks>=6.5.0
+slack-sdk>=3.27.0
+pydantic>=2.6.0
+requests>=2.31.0
+google-cloud-secret-manager>=2.18.0

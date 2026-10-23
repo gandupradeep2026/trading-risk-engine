@@ -118,3 +118,30 @@ output "ingestion_vm_internal_ip" {
   value       = module.compute.internal_ip
 }
 
+# Cloud Composer Outputs
+output "composer_environment_id" {
+  description = "The ID of the Cloud Composer environment"
+  value       = module.composer.composer_environment_id
+}
+
+output "composer_environment_name" {
+  description = "The name of the Cloud Composer environment"
+  value       = module.composer.composer_environment_name
+}
+
+output "composer_airflow_uri" {
+  description = "The Web UI URI for Apache Airflow in Cloud Composer"
+  value       = module.composer.airflow_uri
+}
+
+output "composer_dag_gcs_prefix" {
+  description = "The Cloud Storage prefix for DAGs in Cloud Composer"
+  value       = module.composer.dag_gcs_prefix
+}
+
+output "composer_service_account_email" {
+  description = "The IAM service account email attached to Cloud Composer"
+  value       = module.composer.composer_service_account_email
+}
+
+

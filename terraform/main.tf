@@ -104,3 +104,27 @@ module "compute" {
   market_feed_tickers    = var.market_feed_tickers
 }
 
+# -----------------------------------------------------------------------------
+# 6. CLOUD COMPOSER (APACHE AIRFLOW ORCHESTRATION) MODULE
+# -----------------------------------------------------------------------------
+module "composer" {
+  source = "./modules/composer"
+
+  project_id                      = var.project_id
+  region                          = var.region
+  environment                     = var.environment
+  composer_image_version          = var.composer_image_version
+  composer_environment_size       = var.composer_environment_size
+  network_id                      = module.network.network_id
+  subnetwork_id                   = module.network.data_services_subnet_id
+  composer_master_ipv4_cidr       = var.composer_master_ipv4_cidr
+  composer_cloudsql_ipv4_cidr     = var.composer_cloudsql_ipv4_cidr
+  bronze_bucket_name              = module.storage.bronze_bucket_name
+  silver_bucket_name              = module.storage.silver_bucket_name
+  gold_bucket_name                = module.storage.gold_bucket_name
+  cloudsql_instance_name          = module.cloudsql.instance_connection_name
+  slack_webhook_secret_id         = var.slack_webhook_secret_id
+  pagerduty_routing_key_secret_id = var.pagerduty_routing_key_secret_id
+}
+
+

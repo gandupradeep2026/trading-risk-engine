@@ -146,3 +146,41 @@ variable "market_feed_tickers" {
   default     = ["AAPL", "GOOGL", "MSFT", "AMZN", "NVDA", "TSLA", "JPM", "GS"]
 }
 
+# --- Cloud Composer Module Variables ---
+variable "composer_image_version" {
+  description = "Cloud Composer image version"
+  type        = string
+  default     = "composer-2.9.11-airflow-2.9.3"
+}
+
+variable "composer_environment_size" {
+  description = "Cloud Composer environment size (ENVIRONMENT_SIZE_SMALL, ENVIRONMENT_SIZE_MEDIUM, ENVIRONMENT_SIZE_LARGE)"
+  type        = string
+  default     = "ENVIRONMENT_SIZE_SMALL"
+}
+
+variable "composer_master_ipv4_cidr" {
+  description = "The /28 CIDR block for GKE master in Cloud Composer"
+  type        = string
+  default     = "172.16.0.0/28"
+}
+
+variable "composer_cloudsql_ipv4_cidr" {
+  description = "The CIDR block for internal Cloud SQL in Cloud Composer"
+  type        = string
+  default     = "10.10.100.0/24"
+}
+
+variable "slack_webhook_secret_id" {
+  description = "Secret Manager secret ID containing the Slack webhook URL"
+  type        = string
+  default     = "trading-risk-slack-webhook"
+}
+
+variable "pagerduty_routing_key_secret_id" {
+  description = "Secret Manager secret ID containing the PagerDuty integration key"
+  type        = string
+  default     = "trading-risk-pagerduty-routing-key"
+}
+
+
