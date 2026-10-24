@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 16
+- **Current Milestone Target**: Day 17
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -24,7 +24,7 @@
 - [x] **Day 13**: PySpark rolling VWAP (Volume-Weighted Average Price) and volatility band aggregations.
 - [x] **Day 14**: PySpark streaming sink writing partitioned Snappy-compressed Parquet directly to GCS.
 - [x] **Day 15**: Cloud Composer (Apache Airflow) DAG scaffolding, GCP connections, and notification hooks.
-- [ ] **Day 16**: Databricks workspace configs and Delta Lake Bronze layer ingestion script.
+- [x] **Day 16**: Databricks workspace configs and Delta Lake Bronze layer ingestion script.
 - [ ] **Day 17**: Databricks Silver layer cleansing, schema enforcement, and deduplication notebooks.
 - [ ] **Day 18**: Databricks Gold layer: portfolio Value-at-Risk (VaR) calculation and risk feature store.
 - [ ] **Day 19**: Airflow DAG orchestrating ephemeral Dataproc cluster creation, job execution, and teardown.
@@ -399,6 +399,46 @@
   - Comprehensive zero-cost test suite in `tests/test_composer_dag_and_notifications.py`:
     - 44 unit and integration tests verifying Terraform composer module HCL syntax, balanced braces, root wiring, private IP environment, IAM roles, software config overrides, tfvars settings, AirflowEnvironmentConfig invariants and environment parsing, Airflow compatibility layer bitshift dependencies, TaskGroup hierarchy, DAG cycle detection and topological sorting, canonical DAG structure and SLAs, GcpConnectionManager URI/JSON/CLI generation, Slack Block Kit formatting and HTTP backoff retries, PagerDuty Events API v2 escalation, and failure/retry/success/SLA miss callback execution.
 - **Verification Status**: 396/396 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 16 - 2026-10-24
+- **Milestone Completed**: Databricks workspace configs and Delta Lake Bronze layer ingestion script.
+- **Key Changes Implemented**:
+  - Built production Terraform Databricks Lakehouse module in `terraform/modules/databricks/`:
+    - `databricks_cluster`: Autoscaling compute (`tre-databricks-bronze-${var.environment}`) with GCP Spot worker instances (`SPOT_WITH_FALLBACK_GCP`), on-demand driver, automated idle termination (`autotermination_minutes = 20`), and Databricks Runtime 15.4 LTS (`15.4.x-scala2.12`).
+    - Configured low-latency, zero-loss Delta Lake Spark parameters: `spark.sql.extensions: io.delta.sql.DeltaSparkSessionExtension`, `spark.sql.catalog.spark_catalog: org.apache.spark.sql.delta.catalog.DeltaCatalog`, `spark.databricks.delta.optimizeWrite.enabled: true`, `spark.databricks.delta.autoCompact.enabled: true`, `spark.databricks.delta.changeDataFeed.timestampOutOfRange.enabled: true`, `spark.sql.streaming.schemaInference: false`, and GCS Hadoop filesystem connector settings.
+    - Unity Catalog integration: `databricks_storage_credential` bound to GCP service account `sa-composer-${env}`, external locations (`databricks_external_location`) for Bronze (`gs://.../delta`), Silver, and Gold GCS buckets, `databricks_catalog` (`trading_risk`), and `databricks_schema` (`bronze`) with GCS storage roots.
+    - Production `databricks_job` (`tre-bronze-ingestion-${var.environment}`) defining the scheduled Bronze ingestion task.
+    - Wired databricks module into root `terraform/main.tf`, `variables.tf`, `outputs.tf`, `environments/dev.tfvars`, and `prod.tfvars`.
+  - Implemented Databricks workspace & Delta Lake configuration in `batch/databricks/config.py`:
+    - `DatabricksClusterConfig`: Strongly typed dataclass with GCP availability, worker constraints (`min_workers <= max_workers`), default Delta Spark configs, environment variable parsing (`from_env`), and Databricks Clusters REST API payload generator (`to_api_payload()`).
+    - `DatabricksWorkspaceConfig`: Canonical GCS Medallion bucket paths, Unity Catalog definitions, and environment variable loaders.
+    - `DeltaTableConfig`: Table specifications including partition columns, Z-Ordering keys, Delta Change Data Feed (CDF), autoOptimize, autoCompact, and VACUUM retention hours.
+    - Canonical table configurations: `BRONZE_MARKET_TICKS_CONFIG` (partitions: `[year, month, day, asset_class]`, Z-order: `[ticker, event_timestamp]`), `BRONZE_TRADE_ORDERS_CONFIG` (partitions: `[year, month, day, portfolio_id]`, Z-order: `[order_id, ticker, timestamp]`), and `BRONZE_ROLLING_VWAP_CONFIG` (partitions: `[year, month, day, asset_class]`, Z-order: `[ticker, window_start]`).
+  - Authored explicit schemas and data contracts in `batch/databricks/schemas.py`:
+    - Spark SQL DDL schemas (`DELTA_BRONZE_TICK_DDL`, `DELTA_BRONZE_ORDER_DDL`, `DELTA_BRONZE_VWAP_DDL`) and PyArrow schemas (`ARROW_DELTA_BRONZE_TICK_SCHEMA`, `ARROW_DELTA_BRONZE_ORDER_SCHEMA`, `ARROW_DELTA_BRONZE_VWAP_SCHEMA`).
+    - Enforced audit lineage columns: `_ingested_at`, `_source_file`, `_raw_record_hash`, `_ingest_batch_id`, and `_ingest_date`.
+    - Strict financial domain validators: `validate_bronze_tick_record` (catches crossed quotes `bid > ask`, non-positive prices, negative volumes), `validate_bronze_order_record` (validates BUY/SELL side, valid order types, positive quantities and prices), and `validate_bronze_vwap_record`.
+    - `QuarantinedBronzeRecord` dataclass for isolating malformed records with forensic error diagnostics.
+  - Implemented production Delta Lake Bronze ingestion engine in `batch/databricks/bronze_ingestion.py`:
+    - Deterministic SHA-256 payload hashing (`compute_record_hash`) ignoring variable audit fields to guarantee lineage traceability and deduplication.
+    - `DeltaLogManager`: Full implementation of the Delta Lake ACID transaction log protocol managing `_delta_log/` directory, sequentially numbered 20-digit JSON commit files (`00000000000000000000.json`, `00000000000000000001.json`), action structures (`commitInfo`, `protocol`, `metaData`, `add`, `remove`), column statistics (`numRecords`, `minValues`, `maxValues`, `nullCount`), and active file tracking.
+    - `DeltaBronzeIngestionEngine`: Dual-mode engine supporting live Databricks PySpark/Delta Lake clusters and zero-cost hermetic local PyArrow execution:
+      - Ingests raw source streams/files (Parquet from Day 14 streaming tick sinks, JSON lines from Day 10 Dataflow order sinks, or in-memory lists).
+      - Applies schema validation and isolates corrupted payloads to `_quarantine/` without failing the batch.
+      - Enriches valid records with audit metadata and temporal partitions (`year`, `month`, `day`, `hour`).
+      - Writes Hive-partitioned Snappy-compressed Parquet files and records ACID Delta commits.
+      - Table maintenance methods: `optimize_table()` (compaction & Z-Ordering) and `vacuum_table()` (retention enforcement).
+    - `BronzeIngestionTelemetry`: Real-time operational metrics tracking batches, ingested records, quarantined records, byte volumes, commit versions, and Prometheus exposition formatting (`format_prometheus()`).
+  - Implemented Databricks REST API Client & hermetic mock in `batch/databricks/client.py`:
+    - `DatabricksClient`: REST API 2.1 client with session pooling and exponential backoff retry on HTTP 429 (rate limiting) and 5xx errors.
+    - `MockDatabricksClient`: Zero-cost in-memory simulation of Databricks Jobs and Clusters APIs for testing and CI without cloud costs.
+  - Built production notebook runner in `batch/databricks/notebooks/bronze_ingestion_runner.py` and `01_bronze_ingestion_runner.py`:
+    - Supports both interactive Databricks job runs (via `dbutils.widgets` and `dbutils.notebook.exit`) and CLI script execution (`--source-type`, `--environment`, `--ingestion-date`, `--run-optimize`, `--run-vacuum`, `--dry-run`).
+    - Added `batch/requirements.txt` (`delta-spark`, `pyspark`, `pyarrow`, `pydantic`, `requests`) and clean exports in `batch/__init__.py` and `batch/databricks/__init__.py`.
+  - Comprehensive zero-cost test suite in `tests/test_databricks_bronze_ingestion.py`:
+    - 36 new unit and integration tests verifying Terraform databricks module HCL syntax, balanced braces, root wiring, outputs, dev/prod tfvars, Databricks cluster/workspace config validation and API payloads, Delta table configurations, Arrow/DDL schema parity, tick/order/VWAP domain validation rules, quarantine isolation, deterministic SHA-256 payload hashing, Delta transaction log commit versioning and active file tracking, end-to-end ingestion from Parquet and JSON files, maintenance (OPTIMIZE / VACUUM), MockDatabricksClient job/cluster lifecycle, notebook runner CLI execution, and Prometheus metrics.
+- **Verification Status**: 432/432 tests passed cleanly (`python -m pytest tests/ -v`).
+
 
 
 

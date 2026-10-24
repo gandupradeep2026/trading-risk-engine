@@ -39,4 +39,16 @@ composer_cloudsql_ipv4_cidr     = "10.10.100.0/24"
 slack_webhook_secret_id         = "trading-risk-slack-webhook-dev"
 pagerduty_routing_key_secret_id = "trading-risk-pagerduty-routing-key-dev"
 
+# Databricks Lakehouse (Dev profile)
+databricks_workspace_url            = "https://trading-risk-dev.cloud.databricks.com"
+databricks_account_id               = "00000000-0000-0000-0000-000000000001"
+databricks_cluster_node_type        = "n2-standard-4"
+databricks_cluster_driver_node_type = "n2-standard-4"
+databricks_spark_version            = "15.4.x-scala2.12"
+databricks_min_workers              = 1
+databricks_max_workers              = 4
+databricks_autotermination_minutes  = 20
+databricks_catalog_name             = "trading_risk"
+
+
 

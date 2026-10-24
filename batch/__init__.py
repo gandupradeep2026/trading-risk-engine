@@ -1,5 +1,27 @@
 """Batch analytical lakehouse package for Trading Risk Engine."""
 
+from batch.databricks import (
+    ARROW_DELTA_BRONZE_ORDER_SCHEMA,
+    ARROW_DELTA_BRONZE_TICK_SCHEMA,
+    ARROW_DELTA_BRONZE_VWAP_SCHEMA,
+    BRONZE_MARKET_TICKS_CONFIG,
+    BRONZE_ROLLING_VWAP_CONFIG,
+    BRONZE_TRADE_ORDERS_CONFIG,
+    BronzeIngestionResult,
+    BronzeIngestionTelemetry,
+    DELTA_BRONZE_ORDER_DDL,
+    DELTA_BRONZE_TICK_DDL,
+    DELTA_BRONZE_VWAP_DDL,
+    DatabricksClient,
+    DatabricksClusterConfig,
+    DatabricksWorkspaceConfig,
+    DeltaBronzeIngestionEngine,
+    DeltaLogManager,
+    DeltaTableConfig,
+    MockDatabricksClient,
+    QuarantinedBronzeRecord,
+    compute_record_hash,
+)
 from orchestration.airflow import (
     AirflowConnection,
     AirflowEnvironmentConfig,
@@ -11,6 +33,7 @@ from orchestration.airflow import (
 )
 
 __all__ = [
+    # Airflow & Composer
     "AirflowEnvironmentConfig",
     "AirflowConnection",
     "GcpConnectionManager",
@@ -18,4 +41,25 @@ __all__ = [
     "PagerDutyHook",
     "NotificationDispatcher",
     "AlertSeverity",
+    # Databricks Lakehouse
+    "DatabricksClusterConfig",
+    "DatabricksWorkspaceConfig",
+    "DeltaTableConfig",
+    "BRONZE_MARKET_TICKS_CONFIG",
+    "BRONZE_TRADE_ORDERS_CONFIG",
+    "BRONZE_ROLLING_VWAP_CONFIG",
+    "DELTA_BRONZE_TICK_DDL",
+    "DELTA_BRONZE_ORDER_DDL",
+    "DELTA_BRONZE_VWAP_DDL",
+    "ARROW_DELTA_BRONZE_TICK_SCHEMA",
+    "ARROW_DELTA_BRONZE_ORDER_SCHEMA",
+    "ARROW_DELTA_BRONZE_VWAP_SCHEMA",
+    "BronzeIngestionResult",
+    "BronzeIngestionTelemetry",
+    "DeltaLogManager",
+    "DeltaBronzeIngestionEngine",
+    "compute_record_hash",
+    "DatabricksClient",
+    "MockDatabricksClient",
+    "QuarantinedBronzeRecord",
 ]

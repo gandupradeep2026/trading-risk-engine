@@ -127,4 +127,31 @@ module "composer" {
   pagerduty_routing_key_secret_id = var.pagerduty_routing_key_secret_id
 }
 
+# -----------------------------------------------------------------------------
+# 7. DATABRICKS WORKSPACE & DELTA LAKE LAKEHOUSE MODULE
+# -----------------------------------------------------------------------------
+module "databricks" {
+  source = "./modules/databricks"
+
+  project_id               = var.project_id
+  region                   = var.region
+  environment              = var.environment
+  databricks_workspace_url = var.databricks_workspace_url
+  databricks_account_id    = var.databricks_account_id
+  cluster_node_type        = var.databricks_cluster_node_type
+  cluster_driver_node_type = var.databricks_cluster_driver_node_type
+  spark_version            = var.databricks_spark_version
+  min_workers              = var.databricks_min_workers
+  max_workers              = var.databricks_max_workers
+  autotermination_minutes  = var.databricks_autotermination_minutes
+  catalog_name             = var.databricks_catalog_name
+  gcs_bronze_bucket_name   = module.storage.bronze_bucket_name
+  gcs_bronze_bucket_url    = module.storage.bronze_bucket_url
+  gcs_silver_bucket_name   = module.storage.silver_bucket_name
+  gcs_silver_bucket_url    = module.storage.silver_bucket_url
+  gcs_gold_bucket_name     = module.storage.gold_bucket_name
+  gcs_gold_bucket_url      = module.storage.gold_bucket_url
+}
+
+
 

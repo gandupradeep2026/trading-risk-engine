@@ -144,4 +144,41 @@ output "composer_service_account_email" {
   value       = module.composer.composer_service_account_email
 }
 
+# Databricks Outputs
+output "databricks_cluster_id" {
+  description = "The ID of the Databricks Lakehouse Bronze cluster"
+  value       = module.databricks.cluster_id
+}
+
+output "databricks_cluster_name" {
+  description = "The name of the Databricks Lakehouse Bronze cluster"
+  value       = module.databricks.cluster_name
+}
+
+output "databricks_bronze_job_id" {
+  description = "The ID of the Databricks Bronze ingestion scheduled job"
+  value       = module.databricks.job_id
+}
+
+output "databricks_catalog_name" {
+  description = "The Unity Catalog name for the analytical Lakehouse"
+  value       = module.databricks.catalog_name
+}
+
+output "databricks_bronze_schema" {
+  description = "The Bronze Delta Lake schema name"
+  value       = module.databricks.bronze_schema_name
+}
+
+output "databricks_storage_credential_id" {
+  description = "The Unity Catalog GCS storage credential ID"
+  value       = module.databricks.storage_credential_id
+}
+
+output "databricks_bronze_external_location_id" {
+  description = "The Unity Catalog Bronze GCS external location ID"
+  value       = module.databricks.bronze_external_location_id
+}
+
+
 

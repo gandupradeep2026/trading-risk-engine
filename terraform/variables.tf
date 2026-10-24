@@ -183,4 +183,60 @@ variable "pagerduty_routing_key_secret_id" {
   default     = "trading-risk-pagerduty-routing-key"
 }
 
+# --- Databricks Module Variables ---
+variable "databricks_workspace_url" {
+  description = "The Databricks workspace host URL"
+  type        = string
+  default     = "https://trading-risk-dev.cloud.databricks.com"
+}
+
+variable "databricks_account_id" {
+  description = "Databricks GCP Account ID for Unity Catalog integration"
+  type        = string
+  default     = "00000000-0000-0000-0000-000000000000"
+}
+
+variable "databricks_cluster_node_type" {
+  description = "GCP compute machine type for Databricks worker nodes"
+  type        = string
+  default     = "n2-standard-4"
+}
+
+variable "databricks_cluster_driver_node_type" {
+  description = "GCP compute machine type for Databricks driver node"
+  type        = string
+  default     = "n2-standard-4"
+}
+
+variable "databricks_spark_version" {
+  description = "Databricks Runtime version for the Lakehouse cluster"
+  type        = string
+  default     = "15.4.x-scala2.12"
+}
+
+variable "databricks_min_workers" {
+  description = "Minimum number of worker nodes for cluster autoscaling"
+  type        = number
+  default     = 1
+}
+
+variable "databricks_max_workers" {
+  description = "Maximum number of worker nodes for cluster autoscaling"
+  type        = number
+  default     = 8
+}
+
+variable "databricks_autotermination_minutes" {
+  description = "Cluster inactivity duration in minutes before automated shutdown"
+  type        = number
+  default     = 20
+}
+
+variable "databricks_catalog_name" {
+  description = "Unity Catalog name for the analytical Lakehouse"
+  type        = string
+  default     = "trading_risk"
+}
+
+
 
