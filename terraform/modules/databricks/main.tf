@@ -124,6 +124,21 @@ resource "databricks_schema" "bronze_schema" {
   ]
 }
 
+resource "databricks_schema" "silver_schema" {
+  catalog_name = databricks_catalog.lakehouse_catalog.name
+  name         = "silver"
+  comment      = "Silver cleansed and deduplicated Delta Lake schema: ticks, orders, and rolling VWAP"
+  storage_root = "${var.gcs_silver_bucket_url}/delta/silver"
+  properties = {
+    "tier"        = "silver"
+    "environment" = var.environment
+  }
+
+  depends_on = [
+    databricks_external_location.silver_external_location
+  ]
+}
+
 # -----------------------------------------------------------------------------
 # 4. DATABRICKS BRONZE INGESTION JOB DEFINITION
 # -----------------------------------------------------------------------------
@@ -142,6 +157,36 @@ resource "databricks_job" "bronze_ingestion_job" {
         gcs_bronze_bucket  = var.gcs_bronze_bucket_name
         catalog_name       = databricks_catalog.lakehouse_catalog.name
         schema_name        = databricks_schema.bronze_schema.name
+        run_optimize       = "true"
+        run_vacuum         = "true"
+      }
+    }
+  }
+
+  max_concurrent_runs = 1
+
+  tags = local.common_tags
+}
+
+# -----------------------------------------------------------------------------
+# 5. DATABRICKS SILVER CLEANSING JOB DEFINITION
+# -----------------------------------------------------------------------------
+resource "databricks_job" "silver_cleansing_job" {
+  name = "tre-silver-cleansing-${var.environment}"
+
+  existing_cluster_id = databricks_cluster.bronze_lakehouse_cluster.id
+
+  task {
+    task_key = "cleanse_enforce_and_deduplicate_to_silver"
+
+    notebook_task {
+      notebook_path = "/Workspace/trading-risk/notebooks/02_silver_cleansing_runner"
+      base_parameters = {
+        environment        = var.environment
+        gcs_silver_bucket  = var.gcs_silver_bucket_name
+        catalog_name       = databricks_catalog.lakehouse_catalog.name
+        bronze_schema_name = databricks_schema.bronze_schema.name
+        silver_schema_name = databricks_schema.silver_schema.name
         run_optimize       = "true"
         run_vacuum         = "true"
       }

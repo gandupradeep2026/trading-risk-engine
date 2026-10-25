@@ -247,3 +247,41 @@ BRONZE_ROLLING_VWAP_CONFIG = DeltaTableConfig(
     auto_compact=True,
     vacuum_retention_hours=168,
 )
+
+
+# Canonical Delta Silver Table Configurations (Cleansed, Enforced, Deduplicated)
+SILVER_MARKET_TICKS_CONFIG = DeltaTableConfig(
+    table_name="silver_market_ticks",
+    catalog="trading_risk",
+    schema="silver",
+    partition_columns=["year", "month", "day", "asset_class"],
+    z_order_columns=["ticker", "event_timestamp"],
+    enable_change_data_feed=True,
+    auto_optimize_write=True,
+    auto_compact=True,
+    vacuum_retention_hours=168,
+)
+
+SILVER_TRADE_ORDERS_CONFIG = DeltaTableConfig(
+    table_name="silver_trade_orders",
+    catalog="trading_risk",
+    schema="silver",
+    partition_columns=["year", "month", "day", "portfolio_id"],
+    z_order_columns=["portfolio_id", "ticker", "timestamp"],
+    enable_change_data_feed=True,
+    auto_optimize_write=True,
+    auto_compact=True,
+    vacuum_retention_hours=168,
+)
+
+SILVER_ROLLING_VWAP_CONFIG = DeltaTableConfig(
+    table_name="silver_rolling_vwap",
+    catalog="trading_risk",
+    schema="silver",
+    partition_columns=["year", "month", "day", "asset_class"],
+    z_order_columns=["ticker", "window_start"],
+    enable_change_data_feed=True,
+    auto_optimize_write=True,
+    auto_compact=True,
+    vacuum_retention_hours=168,
+)

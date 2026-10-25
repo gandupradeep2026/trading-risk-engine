@@ -32,3 +32,18 @@ output "bronze_external_location_id" {
   description = "The Unity Catalog Bronze GCS external location ID"
   value       = databricks_external_location.bronze_external_location.id
 }
+
+output "silver_schema_name" {
+  description = "The Silver Delta Lake schema name"
+  value       = databricks_schema.silver_schema.name
+}
+
+output "silver_job_id" {
+  description = "The ID of the Databricks Silver cleansing scheduled job"
+  value       = databricks_job.silver_cleansing_job.id
+}
+
+output "silver_external_location_id" {
+  description = "The Unity Catalog Silver GCS external location ID"
+  value       = databricks_external_location.silver_external_location.id
+}

@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 17
+- **Current Milestone Target**: Day 18
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -25,7 +25,7 @@
 - [x] **Day 14**: PySpark streaming sink writing partitioned Snappy-compressed Parquet directly to GCS.
 - [x] **Day 15**: Cloud Composer (Apache Airflow) DAG scaffolding, GCP connections, and notification hooks.
 - [x] **Day 16**: Databricks workspace configs and Delta Lake Bronze layer ingestion script.
-- [ ] **Day 17**: Databricks Silver layer cleansing, schema enforcement, and deduplication notebooks.
+- [x] **Day 17**: Databricks Silver layer cleansing, schema enforcement, and deduplication notebooks.
 - [ ] **Day 18**: Databricks Gold layer: portfolio Value-at-Risk (VaR) calculation and risk feature store.
 - [ ] **Day 19**: Airflow DAG orchestrating ephemeral Dataproc cluster creation, job execution, and teardown.
 - [ ] **Day 20**: Airflow DAG orchestrating Databricks Gold pipelines with automated retry logic.
@@ -438,6 +438,39 @@
   - Comprehensive zero-cost test suite in `tests/test_databricks_bronze_ingestion.py`:
     - 36 new unit and integration tests verifying Terraform databricks module HCL syntax, balanced braces, root wiring, outputs, dev/prod tfvars, Databricks cluster/workspace config validation and API payloads, Delta table configurations, Arrow/DDL schema parity, tick/order/VWAP domain validation rules, quarantine isolation, deterministic SHA-256 payload hashing, Delta transaction log commit versioning and active file tracking, end-to-end ingestion from Parquet and JSON files, maintenance (OPTIMIZE / VACUUM), MockDatabricksClient job/cluster lifecycle, notebook runner CLI execution, and Prometheus metrics.
 - **Verification Status**: 432/432 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 17 - 2026-10-25
+- **Milestone Completed**: Databricks Silver layer cleansing, schema enforcement, and deduplication notebooks.
+- **Key Changes Implemented**:
+  - Enhanced Terraform Databricks Lakehouse module in `terraform/modules/databricks/`:
+    - Defined Unity Catalog Silver schema (`databricks_schema.silver_schema`) mapped to GCS Silver external storage location (`gs://${var.gcs_silver_bucket_url}/delta/silver`).
+    - Added scheduled Databricks Silver cleansing job (`databricks_job.silver_cleansing_job`) executing `/Workspace/trading-risk/notebooks/02_silver_cleansing_runner`.
+    - Declared Silver outputs in `terraform/modules/databricks/outputs.tf` (`silver_schema_name`, `silver_job_id`, `silver_external_location_id`) and wired into root `terraform/outputs.tf` (`databricks_silver_schema`, `databricks_silver_job_id`, `databricks_silver_external_location_id`).
+  - Extended Databricks Delta Lake configuration in `batch/databricks/config.py`:
+    - Added canonical Silver Delta table specifications: `SILVER_MARKET_TICKS_CONFIG` (partitions: `[year, month, day, asset_class]`, Z-order: `[ticker, event_timestamp]`), `SILVER_TRADE_ORDERS_CONFIG` (partitions: `[year, month, day, portfolio_id]`, Z-order: `[portfolio_id, ticker, timestamp]`), and `SILVER_ROLLING_VWAP_CONFIG` (partitions: `[year, month, day, asset_class]`, Z-order: `[ticker, window_start]`).
+    - Configured Delta Lake table properties: Change Data Feed (CDF enabled for downstream Gold VaR ingestion), autoOptimize.optimizeWrite, autoCompact, and 7-day deleted file retention.
+  - Authored explicit Silver schemas and data quality contracts in `batch/databricks/silver_schemas.py`:
+    - Spark SQL DDL schemas (`DELTA_SILVER_TICK_DDL`, `DELTA_SILVER_ORDER_DDL`, `DELTA_SILVER_VWAP_DDL`) and matching PyArrow schemas (`ARROW_DELTA_SILVER_TICK_SCHEMA`, `ARROW_DELTA_SILVER_ORDER_SCHEMA`, `ARROW_DELTA_SILVER_VWAP_SCHEMA`).
+    - Enforced audit and lineage columns: `_cleansed_at`, `_cleansed_record_hash` (deterministic SHA-256 over cleansed business fields), `_cleansing_batch_id`, and `_ingest_date`.
+    - Strict financial domain validators: `validate_silver_tick_record` (catches crossed quotes `bid > ask`, non-positive prices, negative volumes), `validate_silver_order_record` (BUY/SELL side, valid order types, positive quantities and prices), and `validate_silver_vwap_record`.
+    - `QuarantinedSilverRecord` dataclass for isolating non-compliant records to JSON lines quarantine storage without pipeline interruption.
+    - Quantitative microstructure enrichments:
+      1. Ticks: relative spread in basis points (`relative_spread_bps`), quote condition classification (`TIGHT_SPREAD` <= 5 bps, `WIDE_SPREAD` > 50 bps, `REGULAR`), price return step derivation, and non-crossed quote verification.
+      2. Orders: uppercase normalization, notional USD calculation, order categorization (`EQUITY_ORDER`, `CRYPTO_ORDER`, `FX_ORDER`, `ETF_ORDER`, `COMMODITY_ORDER`), notional tier classification (`MICRO` < $10k, `STANDARD` $10k-$100k, `LARGE` $100k-$500k, `BLOCK` >= $500k), and aggressive taker flag (`is_aggressive` for MARKET orders).
+      3. Rolling VWAP: volatility regime classification (`LOW`, `NORMAL`, `HIGH`, `EXTREME`) and trend direction (`BULLISH`, `BEARISH`, `NEUTRAL`).
+  - Implemented production Delta Lake Silver cleansing & deduplication engine in `batch/databricks/silver_cleansing.py`:
+    - Dual-mode architecture supporting both live Databricks clusters and zero-cost hermetic local PyArrow execution.
+    - Intra-batch deduplication: groups incoming records by primary business key (`order_id` for orders, `(ticker, sequence_number)` for ticks, `(ticker, window_start, window_end)` for VWAP) and retains the newest record while counting eliminated duplicates.
+    - Inter-table Delta Lake `MERGE INTO` (upsert): checks existing active files from `DeltaLogManager`, matches incoming records on business key, updates matching records when incoming timestamp/sequence is newer, inserts unmatched records, rewrites only affected Hive partitions with Snappy-compressed Parquet, records `remove` actions for obsolete files, and commits ACID Delta transaction log with `operation: "MERGE"` and operationMetrics (`numTargetRowsInserted`, `numTargetRowsUpdated`, `numTargetRowsCopied`, `numOutputRows`).
+    - Table maintenance: `optimize_table()` (compaction & Z-Ordering commit) and `vacuum_table()` (retention enforcement commit).
+    - `SilverCleansingTelemetry`: Real-time operational metrics tracking batches, records read, records cleansed, records deduplicated, quarantined records, byte volumes, commit versions, and Prometheus exposition formatting (`format_prometheus()`).
+  - Built production Databricks notebook runners:
+    - `batch/databricks/notebooks/silver_cleansing_runner.py`: CLI and Databricks widget parameter extractor supporting `--environment`, `--source-type`, `--source-path`, `--target-path`, `--ingestion-date`, `--run-optimize`, `--run-vacuum`, `--dry-run`, and JSON execution summaries.
+    - `batch/databricks/notebooks/02_silver_cleansing_runner.py`: Standard Databricks notebook entrypoint script.
+    - Updated package exports in `batch/__init__.py` and `batch/databricks/__init__.py`.
+  - Comprehensive zero-cost test suite in `tests/test_databricks_silver_cleansing.py`:
+    - 25 unit and integration tests verifying Terraform Silver resources and outputs, Delta table configurations, DDL and Arrow schema consistency, domain validation rules, quarantine isolation, microstructure feature enrichments, intra-batch deduplication, inter-table Delta Lake MERGE INTO upsert logic, end-to-end ingestion from Bronze to Silver, OPTIMIZE / VACUUM maintenance commits, CLI runner parsing and execution, and Prometheus metrics.
+- **Verification Status**: 457/457 tests passed cleanly (`python -m pytest tests/ -v`).
 
 
 
