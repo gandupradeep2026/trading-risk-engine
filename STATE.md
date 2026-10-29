@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 19
+- **Current Milestone Target**: Day 20
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -27,7 +27,7 @@
 - [x] **Day 16**: Databricks workspace configs and Delta Lake Bronze layer ingestion script.
 - [x] **Day 17**: Databricks Silver layer cleansing, schema enforcement, and deduplication notebooks.
 - [x] **Day 18**: Databricks Gold layer: portfolio Value-at-Risk (VaR) calculation and risk feature store.
-- [ ] **Day 19**: Airflow DAG orchestrating ephemeral Dataproc cluster creation, job execution, and teardown.
+- [x] **Day 19**: Airflow DAG orchestrating ephemeral Dataproc cluster creation, job execution, and teardown.
 - [ ] **Day 20**: Airflow DAG orchestrating Databricks Gold pipelines with automated retry logic.
 - [ ] **Day 21**: Great Expectations data quality test suites integrated into the Airflow DAG pipeline.
 - [ ] **Day 22**: BigQuery DDL: partitioned and clustered star-schema tables for trades, tickers, and risk stats.
@@ -501,6 +501,39 @@
   - Comprehensive zero-cost test suite in `tests/test_databricks_gold_var_and_feature_store.py`:
     - 14 unit and integration tests verifying Terraform Gold resources/outputs, Gold table configurations, DDL/Arrow schema parity, VaR & CVaR mathematical invariants, Euler Component VaR decomposition, $\sqrt{T}$ horizon scaling, VaR limit breaches, Feature Store online lookups, ACID Delta MERGE upserts, end-to-end Bronze $\to$ Silver $\to$ Gold pipeline execution, CLI runner modes, and Prometheus telemetry.
 - **Verification Status**: 471/471 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 19 - 2026-10-30
+- **Milestone Completed**: Airflow DAG orchestrating ephemeral Dataproc cluster creation, job execution, and teardown.
+- **Key Changes Implemented**:
+  - Ephemeral Dataproc Cluster & Job Configuration (`orchestration/airflow/config/dataproc_cluster_config.py`):
+    - `DataprocEphemeralClusterConfig`: Strongly typed dataclass modeling the GCP Dataproc ClusterConfig specification:
+      - Master node: single instance, `n2-standard-4`, 100GB SSD (`pd-ssd`).
+      - Worker nodes: 2 primary instances, `n2-standard-4`, 100GB standard persistent disk (`pd-standard`).
+      - Secondary worker fleet: 2 Spot/preemptible instances (`is_preemptible=True`, `preemptibility="PREEMPTIBLE"`) achieving 50%+ compute cost optimization.
+      - Network isolation: bound to `sb-data-services` subnetwork in `vpc-trading-risk`, strictly internal IPs (`internal_ip_only=True`), no public IPv4 exposure, with Private Google Access (PGA).
+      - Service account: `sa-composer-${env}` with least-privilege cloud platform scopes.
+      - Software config: Dataproc image `2.2-debian12`, Kryo serializer (`org.apache.spark.serializer.KryoSerializer`), Spark dynamic executor allocation, adaptive query execution, and GCS Parquet direct committer (`BindingParquetOutputCommitter`).
+      - Automated lifecycle safety net: `idle_delete_ttl="1200s"` (20 minutes idle teardown) and `auto_delete_ttl="7200s"` (2 hours maximum lifespan) guaranteeing zero lingering compute costs.
+      - RFC 1035 naming convention generator: `generate_cluster_name()` formatting lowercase alphanumeric cluster identifiers with execution date and retry attempt (e.g. `tre-dp-batch-dev-20261030-1`).
+    - `DataprocBatchJobConfig`: Strongly typed PySpark batch job submission specification generating `placement.cluster_name`, `pyspark_job.main_python_file_uri`, `args`, and Spark properties (`spark.submit.deployMode=cluster`).
+  - Airflow Compatibility Layer & Operator Suite (`orchestration/airflow/airflow_compat.py`):
+    - Added `TriggerRule` constants (`ALL_SUCCESS`, `ALL_DONE`, `ALL_FAILED`, etc.) and wired `trigger_rule` into `BaseOperator`.
+    - Implemented `DataprocClusterStateRegistry`: In-memory thread-safe state machine modeling Dataproc cluster lifecycles (`CREATING`, `RUNNING`, `DELETING`, `DELETED`), active cluster tracking, job execution tracking, and simulated failure injection for zero-cost hermetic testing.
+    - Implemented `DataprocCreateClusterOperator`, `DataprocSubmitJobOperator`, and `DataprocDeleteClusterOperator` with recursive Jinja parameter rendering (`{{ ds }}`, `{{ ds_nodash }}`, `{{ task_instance.try_number }}`).
+  - PySpark Daily Batch Aggregation Engine (`batch/dataproc/daily_tick_aggregation.py`):
+    - Explicit PyArrow schemas (`TICKER_SUMMARY_ARROW_SCHEMA`, `PORTFOLIO_FLOW_ARROW_SCHEMA`) strictly aligned with Spark SQL schemas.
+    - Core quantitative metrics: OHLCV, Volume-Weighted Average Price (VWAP = sum(P * V) / sum(V)), sample price standard deviation, realized volatility in basis points ((stddev / vwap) * 10,000), and average/max bid-ask spread in basis points.
+    - Institutional order flow metrics: directional buy/sell notional, net exposure, order flow imbalance ((Buy - Sell) / (Buy + Sell)), and average order size.
+    - Dual-mode execution supporting both live Dataproc clusters and zero-cost local PyArrow execution, writing partitioned Snappy-compressed Parquet datasets with deterministic SHA-256 record hash for data lineage.
+    - Exposed clean package exports in `batch/dataproc/__init__.py` and `batch/__init__.py`.
+  - Production Airflow DAG Scaffolding & Integration:
+    - Authored standalone DAG `orchestration/airflow/dags/dataproc_ephemeral_dag.py` (`dataproc_ephemeral_batch_pipeline`) chaining `verify_bronze_partitions >> create_ephemeral_cluster >> submit_pyspark_job >> teardown_cluster >> notify_batch_completion`.
+    - Upgraded master lakehouse DAG `orchestration/airflow/dags/trading_risk_daily_batch_dag.py` to use `DataprocCreateClusterOperator`, `DataprocSubmitJobOperator`, and `DataprocDeleteClusterOperator` with `trigger_rule=TriggerRule.ALL_DONE` to guarantee zero lingering cluster costs even on job failure.
+    - Exported DAG symbols in `orchestration/airflow/dags/__init__.py` and `orchestration/airflow/__init__.py`.
+  - Comprehensive Zero-Cost Test Suite (`tests/test_dataproc_ephemeral_dag.py`):
+    - 22 new unit and integration tests verifying cluster configuration, RFC 1035 naming rules, PySpark job configuration, operator lifecycle in registry, standalone and master DAG topology, PySpark microstructure calculations, Snappy Parquet schema and metadata verification, deterministic lineage hashing, and guaranteed teardown on job failure.
+- **Verification Status**: 493/493 tests passed cleanly (`python -m pytest tests/ -v`).
+
 
 
 

@@ -3,7 +3,7 @@
 Orchestrates the Tier 3 batch data processing pipeline across Google Cloud Platform:
 1. Verifies GCS Bronze tick and trade order partitions for previous trading day.
 2. Dataproc Batch Aggregation (Day 19): spins up ephemeral Dataproc cluster, runs
-   PySpark batch aggregations, and tears down cluster.
+   PySpark batch aggregations, and tears down cluster with TriggerRule.ALL_DONE.
 3. Databricks Medallion Processing (Days 16-18): triggers Delta Lake Silver cleansing
    and Gold portfolio Value-at-Risk (VaR) matrices.
 4. Data Quality Gate (Day 21): validates Great Expectations checkpoint suites.
@@ -22,12 +22,22 @@ try:
     import airflow  # type: ignore
     from airflow import DAG  # type: ignore
     from airflow.operators.empty import EmptyOperator  # type: ignore
+    from airflow.providers.google.cloud.operators.dataproc import (  # type: ignore
+        DataprocCreateClusterOperator,
+        DataprocDeleteClusterOperator,
+        DataprocSubmitJobOperator,
+    )
     from airflow.utils.task_group import TaskGroup  # type: ignore
+    from airflow.utils.trigger_rule import TriggerRule  # type: ignore
 except (ImportError, ModuleNotFoundError):
     from orchestration.airflow.airflow_compat import (
         DAG,
+        DataprocCreateClusterOperator,
+        DataprocDeleteClusterOperator,
+        DataprocSubmitJobOperator,
         EmptyOperator,
         TaskGroup,
+        TriggerRule,
     )
 
 from orchestration.airflow.callbacks.failure_callbacks import (
@@ -37,6 +47,10 @@ from orchestration.airflow.callbacks.failure_callbacks import (
     create_success_callback,
 )
 from orchestration.airflow.config.airflow_config import AirflowEnvironmentConfig
+from orchestration.airflow.config.dataproc_cluster_config import (
+    DataprocBatchJobConfig,
+    DataprocEphemeralClusterConfig,
+)
 
 
 def build_trading_risk_dag(
@@ -92,17 +106,64 @@ def build_trading_risk_dag(
         # ---------------------------------------------------------------------
         # TaskGroup: Ephemeral Dataproc Batch Processing (Day 19)
         # ---------------------------------------------------------------------
+        cluster_name = f"tre-dp-batch-{{{{ ds_nodash }}}}-{{{{ task_instance.try_number }}}}"
+        dp_cluster_cfg = DataprocEphemeralClusterConfig(
+            project_id=cfg.gcp_project_id,
+            region=cfg.gcp_region,
+            zone=cfg.dataproc_zone,
+            subnetwork="sb-data-services",
+            cluster_name_prefix=f"tre-dp-batch-{cfg.environment}",
+            service_account=f"sa-composer-{cfg.environment}@{cfg.gcp_project_id}.iam.gserviceaccount.com",
+            internal_ip_only=True,
+        )
+        dp_job_cfg = DataprocBatchJobConfig(
+            project_id=cfg.gcp_project_id,
+            region=cfg.gcp_region,
+            main_python_file_uri=f"gs://{cfg.bronze_bucket}/scripts/dataproc/daily_tick_aggregation.py",
+            args=[
+                "--target-date",
+                "{{ ds }}",
+                "--environment",
+                cfg.environment,
+                "--bronze-bucket",
+                cfg.bronze_bucket,
+                "--silver-bucket",
+                cfg.silver_bucket,
+                "--source-ticks-prefix",
+                "ticks",
+                "--source-orders-prefix",
+                "orders",
+                "--output-prefix",
+                "dataproc/daily_aggregates",
+            ],
+        )
+
         with TaskGroup("dataproc_batch_aggregation", tooltip="Dataproc PySpark rolling batch compute") as dataproc_group:
-            create_cluster = EmptyOperator(
+            create_cluster = DataprocCreateClusterOperator(
                 task_id="create_ephemeral_cluster",
+                project_id=cfg.gcp_project_id,
+                region=cfg.gcp_region,
+                cluster_name=cluster_name,
+                cluster_config=dp_cluster_cfg.to_cluster_config_dict(),
+                gcp_conn_id=cfg.dataproc_conn_id,
+                delete_on_error=True,
                 doc_md="Creates an ephemeral auto-scaling Dataproc PySpark cluster with GCS committer.",
             )
-            submit_pyspark = EmptyOperator(
+            submit_pyspark = DataprocSubmitJobOperator(
                 task_id="submit_pyspark_job",
+                project_id=cfg.gcp_project_id,
+                region=cfg.gcp_region,
+                job=dp_job_cfg.to_pyspark_job_dict(cluster_name=cluster_name),
+                gcp_conn_id=cfg.dataproc_conn_id,
                 doc_md="Submits PySpark daily tick-to-VWAP and order volume rollups.",
             )
-            teardown_cluster = EmptyOperator(
+            teardown_cluster = DataprocDeleteClusterOperator(
                 task_id="teardown_cluster",
+                project_id=cfg.gcp_project_id,
+                region=cfg.gcp_region,
+                cluster_name=cluster_name,
+                gcp_conn_id=cfg.dataproc_conn_id,
+                trigger_rule=TriggerRule.ALL_DONE,
                 doc_md="Tears down ephemeral Dataproc cluster to ensure zero idle compute cost.",
             )
             create_cluster >> submit_pyspark >> teardown_cluster

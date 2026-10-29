@@ -56,6 +56,18 @@ from batch.databricks import (
     validate_silver_tick_record,
     validate_silver_vwap_record,
 )
+from batch.dataproc import (
+    DailyPortfolioFlowRecord,
+    DailyTickerSummaryRecord,
+    DataprocBatchAggregationTelemetry,
+    PORTFOLIO_FLOW_ARROW_SCHEMA,
+    TICKER_SUMMARY_ARROW_SCHEMA,
+    compute_portfolio_flow_summaries,
+    compute_ticker_daily_summaries,
+    run_batch_aggregation,
+    write_portfolio_flow_parquet,
+    write_ticker_summaries_parquet,
+)
 from orchestration.airflow import (
     AirflowConnection,
     AirflowEnvironmentConfig,
@@ -132,4 +144,15 @@ __all__ = [
     "compute_gold_hash",
     "validate_gold_var_record",
     "validate_gold_feature_record",
+    # Dataproc Ephemeral Batch
+    "PORTFOLIO_FLOW_ARROW_SCHEMA",
+    "TICKER_SUMMARY_ARROW_SCHEMA",
+    "DailyTickerSummaryRecord",
+    "DailyPortfolioFlowRecord",
+    "DataprocBatchAggregationTelemetry",
+    "compute_ticker_daily_summaries",
+    "compute_portfolio_flow_summaries",
+    "write_ticker_summaries_parquet",
+    "write_portfolio_flow_parquet",
+    "run_batch_aggregation",
 ]

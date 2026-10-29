@@ -60,6 +60,18 @@ class AirflowTaskTimeout(AirflowException):
     pass
 
 
+class TriggerRule:
+    """Airflow TriggerRule constants controlling task scheduling conditions."""
+    ALL_SUCCESS = "all_success"
+    ALL_FAILED = "all_failed"
+    ALL_DONE = "all_done"
+    ONE_SUCCESS = "one_success"
+    ONE_FAILED = "one_failed"
+    NONE_FAILED = "none_failed"
+    NONE_SKIPPED = "none_skipped"
+    DUMMY = "dummy"
+
+
 class MockTaskInstance:
     """Mock Airflow TaskInstance representation for callback contexts."""
 
@@ -108,6 +120,7 @@ class BaseOperator:
         task_group: Optional[TaskGroup] = None,
         params: Optional[Dict[str, Any]] = None,
         doc_md: Optional[str] = None,
+        trigger_rule: str = TriggerRule.ALL_SUCCESS,
         **kwargs: Any,
     ) -> None:
         self.task_id = task_id
@@ -123,6 +136,7 @@ class BaseOperator:
         self.sla = sla
         self.params = params or {}
         self.doc_md = doc_md
+        self.trigger_rule = trigger_rule
         self.extra_kwargs = kwargs
 
         self._upstream_tasks: Set[BaseOperator] = set()
@@ -230,6 +244,275 @@ class EmptyOperator(BaseOperator):
 
 # Alias DummyOperator to EmptyOperator for backward compatibility
 DummyOperator = EmptyOperator
+
+
+def _render_jinja_string(template: str, context: Optional[Dict[str, Any]]) -> str:
+    """Helper to render basic Airflow Jinja template parameters (ds, ds_nodash, try_number)."""
+    if not isinstance(template, str) or "{{" not in template:
+        return template
+    if not context:
+        return template
+    res = template
+    exec_date = context.get("execution_date") or datetime.utcnow()
+    ti = context.get("task_instance") or context.get("ti")
+    try_num = getattr(ti, "try_number", 1) if ti else 1
+    ds = exec_date.strftime("%Y-%m-%d")
+    ds_nodash = exec_date.strftime("%Y%m%d")
+
+    res = res.replace("{{ ds }}", ds)
+    res = res.replace("{{ds}}", ds)
+    res = res.replace("{{ ds_nodash }}", ds_nodash)
+    res = res.replace("{{ds_nodash}}", ds_nodash)
+    res = res.replace("{{ task_instance.try_number }}", str(try_num))
+    res = res.replace("{{task_instance.try_number}}", str(try_num))
+    res = res.replace("{{ ti.try_number }}", str(try_num))
+    res = res.replace("{{ti.try_number}}", str(try_num))
+    return res
+
+
+def _render_templates_in_obj(obj: Any, context: Optional[Dict[str, Any]]) -> Any:
+    """Recursively render Jinja templates in nested dicts/lists/strings."""
+    if isinstance(obj, str):
+        return _render_jinja_string(obj, context)
+    elif isinstance(obj, list):
+        return [_render_templates_in_obj(item, context) for item in obj]
+    elif isinstance(obj, dict):
+        return {k: _render_templates_in_obj(v, context) for k, v in obj.items()}
+    return obj
+
+
+class DataprocClusterStateRegistry:
+    """Thread-safe registry simulating Google Cloud Dataproc cluster and job state in memory."""
+
+    _lock = threading.Lock()
+    _clusters: Dict[str, Dict[str, Any]] = {}
+    _jobs: Dict[str, Dict[str, Any]] = {}
+    _injected_failures: Dict[str, Exception] = {}
+
+    @classmethod
+    def reset(cls) -> None:
+        """Clear all registered clusters, jobs, and failure injections."""
+        with cls._lock:
+            cls._clusters.clear()
+            cls._jobs.clear()
+            cls._injected_failures.clear()
+
+    @classmethod
+    def inject_failure(cls, target: str, exception: Exception) -> None:
+        """Inject simulated failure for testing (target can be 'create_cluster', 'submit_job', 'delete_cluster')."""
+        with cls._lock:
+            cls._injected_failures[target] = exception
+
+    @classmethod
+    def clear_injected_failures(cls) -> None:
+        """Clear all injected failures."""
+        with cls._lock:
+            cls._injected_failures.clear()
+
+    @classmethod
+    def create_cluster(
+        cls,
+        project_id: str,
+        region: str,
+        cluster_name: str,
+        cluster_config: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        with cls._lock:
+            if "create_cluster" in cls._injected_failures:
+                raise cls._injected_failures["create_cluster"]
+
+            if cluster_name in cls._clusters and cls._clusters[cluster_name]["status"] == "RUNNING":
+                return cls._clusters[cluster_name]
+
+            cluster_entry = {
+                "project_id": project_id,
+                "region": region,
+                "cluster_name": cluster_name,
+                "cluster_config": cluster_config,
+                "status": "RUNNING",
+                "created_at": datetime.utcnow().isoformat(),
+                "deleted_at": None,
+            }
+            cls._clusters[cluster_name] = cluster_entry
+            return cluster_entry
+
+    @classmethod
+    def get_cluster(cls, cluster_name: str) -> Optional[Dict[str, Any]]:
+        with cls._lock:
+            return cls._clusters.get(cluster_name)
+
+    @classmethod
+    def list_active_clusters(cls) -> List[str]:
+        with cls._lock:
+            return [name for name, c in cls._clusters.items() if c["status"] == "RUNNING"]
+
+    @classmethod
+    def delete_cluster(cls, cluster_name: str, cluster_not_found_ok: bool = True) -> bool:
+        with cls._lock:
+            if "delete_cluster" in cls._injected_failures:
+                raise cls._injected_failures["delete_cluster"]
+
+            if cluster_name not in cls._clusters:
+                if not cluster_not_found_ok:
+                    raise AirflowException(f"Dataproc cluster '{cluster_name}' not found for deletion")
+                return False
+
+            cls._clusters[cluster_name]["status"] = "DELETED"
+            cls._clusters[cluster_name]["deleted_at"] = datetime.utcnow().isoformat()
+            return True
+
+    @classmethod
+    def submit_job(
+        cls,
+        project_id: str,
+        region: str,
+        job: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        with cls._lock:
+            if "submit_job" in cls._injected_failures:
+                raise cls._injected_failures["submit_job"]
+
+            cluster_name = (
+                job.get("placement", {}).get("cluster_name")
+                or job.get("cluster_name")
+            )
+            if not cluster_name:
+                raise AirflowException("Job specification missing placement.cluster_name")
+
+            cluster = cls._clusters.get(cluster_name)
+            if not cluster or cluster["status"] != "RUNNING":
+                raise AirflowException(
+                    f"Dataproc cluster '{cluster_name}' is not running (status: {cluster.get('status') if cluster else 'NOT_FOUND'})"
+                )
+
+            job_id = (
+                job.get("reference", {}).get("job_id")
+                or f"job_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}"
+            )
+
+            job_entry = {
+                "project_id": project_id,
+                "region": region,
+                "job_id": job_id,
+                "cluster_name": cluster_name,
+                "job_spec": job,
+                "status": "SUCCESS",
+                "submitted_at": datetime.utcnow().isoformat(),
+            }
+            cls._jobs[job_id] = job_entry
+            return job_entry
+
+    @classmethod
+    def get_job(cls, job_id: str) -> Optional[Dict[str, Any]]:
+        with cls._lock:
+            return cls._jobs.get(job_id)
+
+
+class DataprocCreateClusterOperator(BaseOperator):
+    """Creates a Google Cloud Dataproc cluster.
+
+    Compatible with airflow.providers.google.cloud.operators.dataproc.DataprocCreateClusterOperator.
+    """
+
+    def __init__(
+        self,
+        task_id: str,
+        project_id: str,
+        cluster_name: str,
+        cluster_config: Dict[str, Any],
+        region: str = "us-central1",
+        gcp_conn_id: str = "google_cloud_default",
+        delete_on_error: bool = True,
+        use_if_exists: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(task_id=task_id, **kwargs)
+        self.project_id = project_id
+        self.cluster_name = cluster_name
+        self.cluster_config = cluster_config
+        self.region = region
+        self.gcp_conn_id = gcp_conn_id
+        self.delete_on_error = delete_on_error
+        self.use_if_exists = use_if_exists
+
+    def execute(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        rendered_name = _render_jinja_string(self.cluster_name, context)
+        if not isinstance(self.cluster_config, dict):
+            raise AirflowException("cluster_config must be a dictionary")
+        if "master_config" not in self.cluster_config:
+            raise AirflowException("cluster_config missing required 'master_config'")
+
+        return DataprocClusterStateRegistry.create_cluster(
+            project_id=self.project_id,
+            region=self.region,
+            cluster_name=rendered_name,
+            cluster_config=self.cluster_config,
+        )
+
+
+class DataprocSubmitJobOperator(BaseOperator):
+    """Submits a PySpark or batch job to a Google Cloud Dataproc cluster.
+
+    Compatible with airflow.providers.google.cloud.operators.dataproc.DataprocSubmitJobOperator.
+    """
+
+    def __init__(
+        self,
+        task_id: str,
+        project_id: str,
+        region: str,
+        job: Dict[str, Any],
+        gcp_conn_id: str = "google_cloud_default",
+        asynchronous: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(task_id=task_id, **kwargs)
+        self.project_id = project_id
+        self.region = region
+        self.job = job
+        self.gcp_conn_id = gcp_conn_id
+        self.asynchronous = asynchronous
+
+    def execute(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        rendered_job = _render_templates_in_obj(self.job, context)
+        return DataprocClusterStateRegistry.submit_job(
+            project_id=self.project_id,
+            region=self.region,
+            job=rendered_job,
+        )
+
+
+class DataprocDeleteClusterOperator(BaseOperator):
+    """Deletes a Google Cloud Dataproc cluster to ensure zero idle compute cost.
+
+    Compatible with airflow.providers.google.cloud.operators.dataproc.DataprocDeleteClusterOperator.
+    Defaults to trigger_rule=TriggerRule.ALL_DONE so clusters are reliably deleted even on failure.
+    """
+
+    def __init__(
+        self,
+        task_id: str,
+        project_id: str,
+        cluster_name: str,
+        region: str = "us-central1",
+        gcp_conn_id: str = "google_cloud_default",
+        trigger_rule: str = TriggerRule.ALL_DONE,
+        cluster_not_found_ok: bool = True,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(task_id=task_id, trigger_rule=trigger_rule, **kwargs)
+        self.project_id = project_id
+        self.cluster_name = cluster_name
+        self.region = region
+        self.gcp_conn_id = gcp_conn_id
+        self.cluster_not_found_ok = cluster_not_found_ok
+
+    def execute(self, context: Optional[Dict[str, Any]] = None) -> bool:
+        rendered_name = _render_jinja_string(self.cluster_name, context)
+        return DataprocClusterStateRegistry.delete_cluster(
+            cluster_name=rendered_name,
+            cluster_not_found_ok=self.cluster_not_found_ok,
+        )
 
 
 class TaskGroup:

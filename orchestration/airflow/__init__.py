@@ -1,6 +1,17 @@
 """Airflow orchestration package for Trading Risk Engine."""
 
+from orchestration.airflow.airflow_compat import (
+    DataprocClusterStateRegistry,
+    DataprocCreateClusterOperator,
+    DataprocDeleteClusterOperator,
+    DataprocSubmitJobOperator,
+    TriggerRule,
+)
 from orchestration.airflow.config.airflow_config import AirflowEnvironmentConfig
+from orchestration.airflow.config.dataproc_cluster_config import (
+    DataprocBatchJobConfig,
+    DataprocEphemeralClusterConfig,
+)
 from orchestration.airflow.connections.connection_manager import (
     AirflowConnection,
     GcpConnectionManager,
@@ -20,4 +31,12 @@ __all__ = [
     "PagerDutyHook",
     "NotificationDispatcher",
     "AlertSeverity",
+    # Dataproc Ephemeral Orchestration
+    "DataprocEphemeralClusterConfig",
+    "DataprocBatchJobConfig",
+    "DataprocCreateClusterOperator",
+    "DataprocSubmitJobOperator",
+    "DataprocDeleteClusterOperator",
+    "TriggerRule",
+    "DataprocClusterStateRegistry",
 ]
