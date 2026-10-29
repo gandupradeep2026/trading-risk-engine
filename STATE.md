@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 18
+- **Current Milestone Target**: Day 19
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -26,7 +26,7 @@
 - [x] **Day 15**: Cloud Composer (Apache Airflow) DAG scaffolding, GCP connections, and notification hooks.
 - [x] **Day 16**: Databricks workspace configs and Delta Lake Bronze layer ingestion script.
 - [x] **Day 17**: Databricks Silver layer cleansing, schema enforcement, and deduplication notebooks.
-- [ ] **Day 18**: Databricks Gold layer: portfolio Value-at-Risk (VaR) calculation and risk feature store.
+- [x] **Day 18**: Databricks Gold layer: portfolio Value-at-Risk (VaR) calculation and risk feature store.
 - [ ] **Day 19**: Airflow DAG orchestrating ephemeral Dataproc cluster creation, job execution, and teardown.
 - [ ] **Day 20**: Airflow DAG orchestrating Databricks Gold pipelines with automated retry logic.
 - [ ] **Day 21**: Great Expectations data quality test suites integrated into the Airflow DAG pipeline.
@@ -471,6 +471,37 @@
   - Comprehensive zero-cost test suite in `tests/test_databricks_silver_cleansing.py`:
     - 25 unit and integration tests verifying Terraform Silver resources and outputs, Delta table configurations, DDL and Arrow schema consistency, domain validation rules, quarantine isolation, microstructure feature enrichments, intra-batch deduplication, inter-table Delta Lake MERGE INTO upsert logic, end-to-end ingestion from Bronze to Silver, OPTIMIZE / VACUUM maintenance commits, CLI runner parsing and execution, and Prometheus metrics.
 - **Verification Status**: 457/457 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 18 - 2026-10-29
+- **Milestone Completed**: Databricks Gold layer: portfolio Value-at-Risk (VaR) calculation and risk feature store.
+- **Key Changes Implemented**:
+  - Enhanced Terraform Databricks Lakehouse module in `terraform/modules/databricks/`:
+    - Defined Unity Catalog Gold schema (`databricks_schema.gold_schema`) mapped to GCS Gold external storage location (`gs://${var.gcs_gold_bucket_url}/delta/gold`).
+    - Added scheduled Databricks Gold VaR & Risk Feature Store job (`databricks_job.gold_var_job`) executing `/Workspace/trading-risk/notebooks/03_gold_var_feature_store_runner`.
+    - Declared Gold outputs in `terraform/modules/databricks/outputs.tf` (`gold_schema_name`, `gold_var_job_id`, `gold_external_location_id`) and wired into root `terraform/outputs.tf` (`databricks_gold_schema`, `databricks_gold_var_job_id`, `databricks_gold_external_location_id`).
+  - Extended Databricks Delta Lake configuration in `batch/databricks/config.py`:
+    - Added canonical Gold Delta table specifications: `GOLD_PORTFOLIO_VAR_CONFIG` (partitions: `[year, month, day, portfolio_id]`, Z-order: `[portfolio_id, valuation_timestamp]`) and `GOLD_RISK_FEATURE_STORE_CONFIG` (partitions: `[year, month, day, asset_class]`, Z-order: `[portfolio_id, ticker, valuation_timestamp]`).
+  - Authored explicit Gold schemas and quantitative data contracts in `batch/databricks/gold_schemas.py`:
+    - Spark SQL DDL schemas (`DELTA_GOLD_PORTFOLIO_VAR_DDL`, `DELTA_GOLD_RISK_FEATURE_STORE_DDL`) and matching PyArrow schemas (`ARROW_DELTA_GOLD_PORTFOLIO_VAR_SCHEMA`, `ARROW_DELTA_GOLD_RISK_FEATURE_STORE_SCHEMA`).
+    - Structured dataclasses `PortfolioVaRRecord` and `RiskFeatureVector` with JSON/Arrow serialization and deterministic SHA-256 lineage hashing (`compute_gold_hash`).
+    - Strict mathematical invariant validators: `validate_gold_var_record` (enforcing confidence monotonicity $\text{VaR}_{99} \ge \text{VaR}_{95} \ge 0$, coherent tail risk $\text{CVaR}_{95} \ge \text{MC VaR}_{95}$ and $\text{CVaR}_{99} \ge \text{MC VaR}_{99}$, and non-negative exposures) and `validate_gold_feature_record` (enforcing liquidity score bounds $[0, 1]$, order flow imbalance bounds $[-1, 1]$, and strictly positive mark-to-market prices).
+  - Implemented production Delta Lake Gold VaR & Risk Feature Store engine in `batch/databricks/gold_var_engine.py`:
+    - Multi-methodology Portfolio Value-at-Risk engine computing:
+      1. Parametric Variance-Covariance VaR (95% & 99%) with empirical covariance matrix and asset-class cross-correlation matrix priors, plus square-root-of-time horizon scaling ($\sqrt{T}$).
+      2. Historical Simulation VaR (95% & 99%) over reconstructed historical portfolio PnL trajectories.
+      3. Correlated Monte Carlo VaR (95% & 99%) and Expected Shortfall / Conditional VaR ($\text{CVaR}_{95}$, $\text{CVaR}_{99}$) via exact Cholesky decomposition ($L L^\top = \Sigma$) over configurable multi-asset Geometric Brownian Motion paths.
+      4. Euler Homogeneous Function Theorem risk decomposition computing Marginal VaR and Component VaR per position ($\sum_i \text{ComponentVaR}_{95,i} = \text{ParametricVaR}_{95}$), diversification benefit percentage, HHI concentration index, and risk regime classification (`LOW_RISK`, `MODERATE_RISK`, `ELEVATED_RISK`, `HIGH_RISK`, `CRITICAL_BREACH`).
+    - Institutional Risk Feature Store & Point-in-Time Retrieval APIs:
+      - Derives per-(portfolio, ticker) quantitative features: net/gross/signed exposure, mark-to-market price, unrealized PnL, realized & EWMA annualized volatility ($\lambda=0.94$), VWAP deviation in bps, order flow imbalance, aggressive order ratio, liquidity score, and beta to portfolio.
+      - Online/offline feature lookup APIs: `get_portfolio_features()`, `get_feature_vector()`, and `get_latest_portfolio_var()`.
+    - Full Delta Lake ACID `WRITE` and `MERGE INTO` upsert execution across partitioned Snappy Parquet tables with `optimize_table()` and `vacuum_table()` maintenance and `GoldVaRTelemetry` Prometheus metrics exposition.
+  - Built production Databricks notebook runners:
+    - `batch/databricks/notebooks/gold_var_runner.py` and `batch/databricks/notebooks/03_gold_var_feature_store_runner.py` supporting CLI and Databricks widget execution.
+    - Updated package exports in `batch/__init__.py` and `batch/databricks/__init__.py`.
+  - Comprehensive zero-cost test suite in `tests/test_databricks_gold_var_and_feature_store.py`:
+    - 14 unit and integration tests verifying Terraform Gold resources/outputs, Gold table configurations, DDL/Arrow schema parity, VaR & CVaR mathematical invariants, Euler Component VaR decomposition, $\sqrt{T}$ horizon scaling, VaR limit breaches, Feature Store online lookups, ACID Delta MERGE upserts, end-to-end Bronze $\to$ Silver $\to$ Gold pipeline execution, CLI runner modes, and Prometheus telemetry.
+- **Verification Status**: 471/471 tests passed cleanly (`python -m pytest tests/ -v`).
+
 
 
 

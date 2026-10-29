@@ -383,7 +383,7 @@ def cleanse_and_enrich_tick(
     raw_ts = str(raw_record["timestamp"]).strip()
     event_timestamp = parse_iso_or_epoch_timestamp(raw_ts)
 
-    seq_num = int(raw_record.get("sequence_number", 0))
+    seq_num = int(raw_record.get("sequence_number") or 0)
     source = str(raw_record.get("source") or "STREAM").strip().upper()
 
     # Financial Microstructure Enrichments
@@ -509,7 +509,7 @@ def cleanse_and_enrich_order(
 
     trader_id = str(raw_record.get("trader_id") or "UNKNOWN").strip().upper()
     execution_status = str(raw_record.get("execution_status") or "FILLED").strip().upper()
-    seq_num = int(raw_record.get("sequence_number", 0))
+    seq_num = int(raw_record.get("sequence_number") or 0)
 
     # Categorization enrichments
     if ticker in {"BTCUSD", "ETHUSD", "SOLUSD"}:

@@ -139,6 +139,21 @@ resource "databricks_schema" "silver_schema" {
   ]
 }
 
+resource "databricks_schema" "gold_schema" {
+  catalog_name = databricks_catalog.lakehouse_catalog.name
+  name         = "gold"
+  comment      = "Gold curated analytical Delta Lake schema: portfolio Value-at-Risk (VaR) and risk feature store"
+  storage_root = "${var.gcs_gold_bucket_url}/delta/gold"
+  properties = {
+    "tier"        = "gold"
+    "environment" = var.environment
+  }
+
+  depends_on = [
+    databricks_external_location.gold_external_location
+  ]
+}
+
 # -----------------------------------------------------------------------------
 # 4. DATABRICKS BRONZE INGESTION JOB DEFINITION
 # -----------------------------------------------------------------------------
@@ -189,6 +204,38 @@ resource "databricks_job" "silver_cleansing_job" {
         silver_schema_name = databricks_schema.silver_schema.name
         run_optimize       = "true"
         run_vacuum         = "true"
+      }
+    }
+  }
+
+  max_concurrent_runs = 1
+
+  tags = local.common_tags
+}
+
+# -----------------------------------------------------------------------------
+# 6. DATABRICKS GOLD VALUE-AT-RISK (VaR) & FEATURE STORE JOB DEFINITION
+# -----------------------------------------------------------------------------
+resource "databricks_job" "gold_var_job" {
+  name = "tre-gold-var-feature-store-${var.environment}"
+
+  existing_cluster_id = databricks_cluster.bronze_lakehouse_cluster.id
+
+  task {
+    task_key = "compute_portfolio_var_and_feature_store"
+
+    notebook_task {
+      notebook_path = "/Workspace/trading-risk/notebooks/03_gold_var_feature_store_runner"
+      base_parameters = {
+        environment             = var.environment
+        gcs_gold_bucket         = var.gcs_gold_bucket_name
+        catalog_name            = databricks_catalog.lakehouse_catalog.name
+        silver_schema_name      = databricks_schema.silver_schema.name
+        gold_schema_name        = databricks_schema.gold_schema.name
+        confidence_levels       = "0.95,0.99"
+        monte_carlo_simulations = "10000"
+        run_optimize            = "true"
+        run_vacuum              = "true"
       }
     }
   }

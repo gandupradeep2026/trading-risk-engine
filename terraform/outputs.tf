@@ -195,5 +195,20 @@ output "databricks_silver_external_location_id" {
   value       = module.databricks.silver_external_location_id
 }
 
+output "databricks_gold_schema" {
+  description = "The Gold Delta Lake schema name"
+  value       = module.databricks.gold_schema_name
+}
+
+output "databricks_gold_job_id" {
+  description = "The ID of the Databricks Gold VaR & Feature Store scheduled job"
+  value       = module.databricks.gold_job_id
+}
+
+output "databricks_gold_external_location_id" {
+  description = "The Unity Catalog Gold GCS external location ID"
+  value       = module.databricks.gold_external_location_id
+}
+
 
 

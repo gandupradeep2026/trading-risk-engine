@@ -285,3 +285,29 @@ SILVER_ROLLING_VWAP_CONFIG = DeltaTableConfig(
     auto_compact=True,
     vacuum_retention_hours=168,
 )
+
+
+# Canonical Delta Gold Table Configurations (Curated Risk Analytics & Feature Store)
+GOLD_PORTFOLIO_VAR_CONFIG = DeltaTableConfig(
+    table_name="gold_portfolio_var",
+    catalog="trading_risk",
+    schema="gold",
+    partition_columns=["year", "month", "day"],
+    z_order_columns=["portfolio_id", "valuation_timestamp"],
+    enable_change_data_feed=True,
+    auto_optimize_write=True,
+    auto_compact=True,
+    vacuum_retention_hours=168,
+)
+
+GOLD_RISK_FEATURE_STORE_CONFIG = DeltaTableConfig(
+    table_name="gold_risk_feature_store",
+    catalog="trading_risk",
+    schema="gold",
+    partition_columns=["year", "month", "day", "asset_class"],
+    z_order_columns=["portfolio_id", "ticker", "feature_timestamp"],
+    enable_change_data_feed=True,
+    auto_optimize_write=True,
+    auto_compact=True,
+    vacuum_retention_hours=168,
+)

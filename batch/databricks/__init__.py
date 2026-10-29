@@ -22,9 +22,29 @@ from batch.databricks.config import (
     DatabricksClusterConfig,
     DatabricksWorkspaceConfig,
     DeltaTableConfig,
+    GOLD_PORTFOLIO_VAR_CONFIG,
+    GOLD_RISK_FEATURE_STORE_CONFIG,
     SILVER_MARKET_TICKS_CONFIG,
     SILVER_ROLLING_VWAP_CONFIG,
     SILVER_TRADE_ORDERS_CONFIG,
+)
+from batch.databricks.gold_schemas import (
+    ARROW_DELTA_GOLD_PORTFOLIO_VAR_SCHEMA,
+    ARROW_DELTA_GOLD_RISK_FEATURE_STORE_SCHEMA,
+    DELTA_GOLD_PORTFOLIO_VAR_DDL,
+    DELTA_GOLD_RISK_FEATURE_STORE_DDL,
+    PortfolioVaRRecord,
+    RiskFeatureVector,
+    compute_gold_hash,
+    validate_gold_feature_record,
+    validate_gold_var_record,
+)
+from batch.databricks.gold_var_engine import (
+    DeltaGoldVaREngine,
+    GoldVaRResult,
+    GoldVaRTelemetry,
+    get_pairwise_correlation,
+    infer_asset_class,
 )
 from batch.databricks.schemas import (
     ARROW_DELTA_BRONZE_ORDER_SCHEMA,
@@ -73,6 +93,8 @@ __all__ = [
     "SILVER_MARKET_TICKS_CONFIG",
     "SILVER_TRADE_ORDERS_CONFIG",
     "SILVER_ROLLING_VWAP_CONFIG",
+    "GOLD_PORTFOLIO_VAR_CONFIG",
+    "GOLD_RISK_FEATURE_STORE_CONFIG",
     # Bronze Schemas
     "DELTA_BRONZE_TICK_DDL",
     "DELTA_BRONZE_ORDER_DDL",
@@ -110,6 +132,21 @@ __all__ = [
     "DeltaSilverCleansingEngine",
     "SilverCleansingResult",
     "SilverCleansingTelemetry",
+    # Gold VaR & Feature Store
+    "DELTA_GOLD_PORTFOLIO_VAR_DDL",
+    "DELTA_GOLD_RISK_FEATURE_STORE_DDL",
+    "ARROW_DELTA_GOLD_PORTFOLIO_VAR_SCHEMA",
+    "ARROW_DELTA_GOLD_RISK_FEATURE_STORE_SCHEMA",
+    "PortfolioVaRRecord",
+    "RiskFeatureVector",
+    "compute_gold_hash",
+    "validate_gold_var_record",
+    "validate_gold_feature_record",
+    "DeltaGoldVaREngine",
+    "GoldVaRResult",
+    "GoldVaRTelemetry",
+    "get_pairwise_correlation",
+    "infer_asset_class",
     # Client
     "DatabricksClient",
     "MockDatabricksClient",
