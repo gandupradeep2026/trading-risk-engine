@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 20
+- **Current Milestone Target**: Day 21
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 
@@ -28,7 +28,7 @@
 - [x] **Day 17**: Databricks Silver layer cleansing, schema enforcement, and deduplication notebooks.
 - [x] **Day 18**: Databricks Gold layer: portfolio Value-at-Risk (VaR) calculation and risk feature store.
 - [x] **Day 19**: Airflow DAG orchestrating ephemeral Dataproc cluster creation, job execution, and teardown.
-- [ ] **Day 20**: Airflow DAG orchestrating Databricks Gold pipelines with automated retry logic.
+- [x] **Day 20**: Airflow DAG orchestrating Databricks Gold pipelines with automated retry logic.
 - [ ] **Day 21**: Great Expectations data quality test suites integrated into the Airflow DAG pipeline.
 - [ ] **Day 22**: BigQuery DDL: partitioned and clustered star-schema tables for trades, tickers, and risk stats.
 - [ ] **Day 23**: dbt project initialization with staging and intermediate SQL models for BigQuery.
@@ -533,6 +533,29 @@
   - Comprehensive Zero-Cost Test Suite (`tests/test_dataproc_ephemeral_dag.py`):
     - 22 new unit and integration tests verifying cluster configuration, RFC 1035 naming rules, PySpark job configuration, operator lifecycle in registry, standalone and master DAG topology, PySpark microstructure calculations, Snappy Parquet schema and metadata verification, deterministic lineage hashing, and guaranteed teardown on job failure.
 - **Verification Status**: 493/493 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 20 - 2026-10-31
+- **Milestone Completed**: Airflow DAG orchestrating Databricks Gold pipelines with automated retry logic.
+- **Key Changes Implemented**:
+  - Databricks Lakehouse & Task Retry Configuration (`orchestration/airflow/config/databricks_job_config.py`):
+    - `DatabricksTaskRetryConfig`: Strongly typed retry policy enforcing 3 retries, exponential backoff (multiplier 2.0, max 300s delay), timeout retry, and conversion to Databricks task retry specifications (`max_retries=3`, `min_retry_interval_millis=60000`, `retry_on_timeout=True`).
+    - `DatabricksGoldJobConfig`: Enterprise configuration dataclass for Databricks Lakehouse pipelines:
+      - Spot compute autoscaling cluster specification matching Terraform infrastructure (`min_workers=2`, `max_workers=8`, `SPOT_WITH_FALLBACK_GCP`, idle termination after 20 minutes, Delta Lake Spark session extensions and direct GCS committer).
+      - Multitask submit-run payload generators: `to_silver_submit_run_dict()` for Silver cleansing (`02_silver_cleansing_runner`), `to_gold_var_submit_dict()` for Gold Portfolio VaR & Feature Store (`03_gold_var_feature_store_runner`), and `to_gold_maintenance_submit_dict()` for Delta table OPTIMIZE (Z-ordering) and VACUUM maintenance.
+      - Unity Catalog bindings across `trading_risk.bronze`, `trading_risk.silver`, and `trading_risk.gold` with GCS external locations.
+      - Quantitative modeling parameters: 95% & 99% confidence levels, 10,000 Monte Carlo simulations, $250k portfolio limit, and 1-day risk horizon.
+  - Databricks Airflow Compatibility Operators & In-Memory Registry (`orchestration/airflow/airflow_compat.py`):
+    - `DatabricksJobStateRegistry`: Thread-safe in-memory state machine modeling Databricks Runs and Jobs API (`runs/submit`, `jobs/run-now`, `runs/get`, `runs/cancel`), tracking lifecycle states (`PENDING`, `RUNNING`, `TERMINATED`), outcome states (`SUCCESS`, `FAILED`, `CANCELED`), attempt counts, and configurable transient or permanent failure injection for hermetic zero-cost testing.
+    - `DatabricksSubmitRunOperator`: Pure-Python operator compatible with `airflow.providers.databricks.operators.databricks.DatabricksSubmitRunOperator` supporting recursive Jinja templating (`{{ ds }}`, `{{ task_instance.try_number }}`) across multi-task run specifications, notebook base parameters, and cluster specifications.
+    - `DatabricksRunNowOperator`: Pure-Python operator compatible with `airflow.providers.databricks.operators.databricks.DatabricksRunNowOperator` supporting immediate job execution and parameter overrides.
+  - Production Airflow DAG Scaffolding & Integration:
+    - Authored standalone DAG `orchestration/airflow/dags/databricks_gold_dag.py` (`databricks_gold_pipeline`) orchestrating `start_gold_pipeline >> verify_silver_readiness >> silver_lakehouse_cleansing >> gold_lakehouse_var_and_features >> optimize_and_vacuum_gold_tables >> notify_gold_completion` with automated retries, rich Slack retry warnings, and PagerDuty failure escalation.
+    - Upgraded master lakehouse DAG `orchestration/airflow/dags/trading_risk_daily_batch_dag.py`: replaced placeholder EmptyOperators in `databricks_medallion_processing` TaskGroup with production `DatabricksSubmitRunOperator` instances for Silver cleansing, Gold VaR calculation, and Gold table maintenance, fully wired between upstream Dataproc batch aggregation and downstream Data Quality gates.
+    - Exported new modules and symbols in `orchestration/airflow/__init__.py`, `orchestration/airflow/config/__init__.py`, and `orchestration/airflow/dags/__init__.py`.
+  - Comprehensive Zero-Cost Test Suite (`tests/test_databricks_gold_dag.py`):
+    - 25 unit and integration tests verifying config invariants, SparkConf spot cluster specifications, submit-run dictionary payloads, registry lifecycle transitions, operator template rendering, transient failure recovery with automated exponential backoff retries, permanent failure escalation triggering failure callbacks, standalone DAG topology and acyclicity, master lakehouse DAG integration, and end-to-end multi-task execution with Spot worker preemption recovery.
+- **Verification Status**: 518/518 tests passed cleanly (`python -m pytest tests/ -v`).
+
 
 
 

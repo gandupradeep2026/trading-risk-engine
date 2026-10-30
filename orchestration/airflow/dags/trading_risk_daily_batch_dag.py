@@ -22,6 +22,10 @@ try:
     import airflow  # type: ignore
     from airflow import DAG  # type: ignore
     from airflow.operators.empty import EmptyOperator  # type: ignore
+    from airflow.providers.databricks.operators.databricks import (  # type: ignore
+        DatabricksRunNowOperator,
+        DatabricksSubmitRunOperator,
+    )
     from airflow.providers.google.cloud.operators.dataproc import (  # type: ignore
         DataprocCreateClusterOperator,
         DataprocDeleteClusterOperator,
@@ -32,6 +36,8 @@ try:
 except (ImportError, ModuleNotFoundError):
     from orchestration.airflow.airflow_compat import (
         DAG,
+        DatabricksRunNowOperator,
+        DatabricksSubmitRunOperator,
         DataprocCreateClusterOperator,
         DataprocDeleteClusterOperator,
         DataprocSubmitJobOperator,
@@ -47,6 +53,7 @@ from orchestration.airflow.callbacks.failure_callbacks import (
     create_success_callback,
 )
 from orchestration.airflow.config.airflow_config import AirflowEnvironmentConfig
+from orchestration.airflow.config.databricks_job_config import DatabricksGoldJobConfig
 from orchestration.airflow.config.dataproc_cluster_config import (
     DataprocBatchJobConfig,
     DataprocEphemeralClusterConfig,
@@ -169,18 +176,56 @@ def build_trading_risk_dag(
             create_cluster >> submit_pyspark >> teardown_cluster
 
         # ---------------------------------------------------------------------
-        # TaskGroup: Databricks Medallion Lakehouse (Days 16-18)
+        # TaskGroup: Databricks Medallion Lakehouse (Days 16-18, 20)
         # ---------------------------------------------------------------------
+        db_cfg = DatabricksGoldJobConfig.from_env()
+        db_retry_cfg = db_cfg.retry_config
+
         with TaskGroup("databricks_medallion_processing", tooltip="Databricks Silver & Gold Lakehouse") as databricks_group:
-            silver_cleansing = EmptyOperator(
+            silver_cleansing = DatabricksSubmitRunOperator(
                 task_id="execute_silver_cleansing",
-                doc_md="Cleanses, schema-enforces, and deduplicates records into Delta Lake Silver.",
+                json=db_cfg.to_silver_submit_run_dict(target_date="{{ ds }}"),
+                databricks_conn_id=db_cfg.databricks_conn_id,
+                databricks_retry_limit=db_retry_cfg.retries,
+                databricks_retry_delay=db_retry_cfg.retry_delay_seconds,
+                retries=db_retry_cfg.retries,
+                retry_delay=timedelta(seconds=db_retry_cfg.retry_delay_seconds),
+                retry_exponential_backoff=db_retry_cfg.retry_exponential_backoff,
+                max_retry_delay=timedelta(seconds=db_retry_cfg.max_retry_delay_seconds),
+                on_retry_callback=create_retry_callback(),
+                on_failure_callback=create_failure_callback(),
+                doc_md="Cleanses, schema-enforces, and deduplicates records into Delta Lake Silver with automated retries.",
             )
-            gold_var_calc = EmptyOperator(
+            gold_var_calc = DatabricksSubmitRunOperator(
                 task_id="execute_gold_var_calculation",
-                doc_md="Calculates Monte Carlo / Parametric Value-at-Risk (VaR) and risk features.",
+                json=db_cfg.to_gold_var_submit_dict(target_date="{{ ds }}"),
+                databricks_conn_id=db_cfg.databricks_conn_id,
+                databricks_retry_limit=db_retry_cfg.retries,
+                databricks_retry_delay=db_retry_cfg.retry_delay_seconds,
+                retries=db_retry_cfg.retries,
+                retry_delay=timedelta(seconds=db_retry_cfg.retry_delay_seconds),
+                retry_exponential_backoff=db_retry_cfg.retry_exponential_backoff,
+                max_retry_delay=timedelta(seconds=db_retry_cfg.max_retry_delay_seconds),
+                on_retry_callback=create_retry_callback(),
+                on_failure_callback=create_failure_callback(),
+                doc_md="Calculates Monte Carlo / Parametric Value-at-Risk (VaR) and risk features with automated retries.",
             )
-            silver_cleansing >> gold_var_calc
+            gold_maintenance = DatabricksSubmitRunOperator(
+                task_id="execute_gold_table_maintenance",
+                json=db_cfg.to_gold_maintenance_submit_dict(target_date="{{ ds }}"),
+                databricks_conn_id=db_cfg.databricks_conn_id,
+                databricks_retry_limit=db_retry_cfg.retries,
+                databricks_retry_delay=db_retry_cfg.retry_delay_seconds,
+                retries=db_retry_cfg.retries,
+                retry_delay=timedelta(seconds=db_retry_cfg.retry_delay_seconds),
+                retry_exponential_backoff=db_retry_cfg.retry_exponential_backoff,
+                max_retry_delay=timedelta(seconds=db_retry_cfg.max_retry_delay_seconds),
+                trigger_rule=TriggerRule.ALL_SUCCESS,
+                on_retry_callback=create_retry_callback(),
+                on_failure_callback=create_failure_callback(),
+                doc_md="Applies Delta OPTIMIZE (Z-ordering) and VACUUM maintenance across Gold tables.",
+            )
+            silver_cleansing >> gold_var_calc >> gold_maintenance
 
         # ---------------------------------------------------------------------
         # TaskGroup: Data Quality Validation Gates (Day 21)

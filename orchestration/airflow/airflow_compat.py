@@ -515,6 +515,315 @@ class DataprocDeleteClusterOperator(BaseOperator):
         )
 
 
+# =============================================================================
+# DATABRICKS OPERATORS & IN-MEMORY STATE REGISTRY (Day 20)
+# =============================================================================
+
+class DatabricksJobStateRegistry:
+    """Thread-safe registry simulating Databricks Runs and Jobs REST API state in memory.
+
+    Provides zero-cost hermetic simulation for Databricks job runs, tracking states,
+    run outputs, task execution attempt counts, and configurable transient or permanent
+    failure injections to rigorously test automated retry logic and alerting.
+    """
+
+    _lock = threading.Lock()
+    _runs: Dict[int, Dict[str, Any]] = {}
+    _jobs: Dict[Union[int, str], Dict[str, Any]] = {}
+    _injected_failures: Dict[str, Dict[str, Any]] = {}
+    _task_attempt_counts: Dict[str, int] = {}
+    _next_run_id: int = 7001
+    _next_job_id: int = 1001
+
+    @classmethod
+    def reset(cls) -> None:
+        """Clear all registered runs, jobs, failures, and attempt counters."""
+        with cls._lock:
+            cls._runs.clear()
+            cls._jobs.clear()
+            cls._injected_failures.clear()
+            cls._task_attempt_counts.clear()
+            cls._next_run_id = 7001
+            cls._next_job_id = 1001
+
+    @classmethod
+    def inject_failure(
+        cls,
+        key: str,
+        exception: Exception,
+        fail_count: int = 1,
+    ) -> None:
+        """Inject a transient or permanent failure for a task, job, or endpoint.
+
+        Args:
+            key: Task ID or job identifier to fail.
+            exception: The Exception to raise upon execution.
+            fail_count: Number of consecutive attempts to fail before succeeding.
+                        Use a large number (e.g. 9999) for permanent failure.
+        """
+        with cls._lock:
+            cls._injected_failures[key] = {
+                "exception": exception,
+                "remaining_fails": fail_count,
+            }
+
+    @classmethod
+    def get_attempt_count(cls, task_id: str) -> int:
+        """Return the number of execution attempts recorded for a given task ID."""
+        with cls._lock:
+            return cls._task_attempt_counts.get(task_id, 0)
+
+    @classmethod
+    def register_job(cls, job_id: Union[int, str], job_spec: Dict[str, Any]) -> None:
+        """Register a pre-existing job in the workspace mock."""
+        with cls._lock:
+            cls._jobs[job_id] = dict(job_spec)
+
+    @classmethod
+    def submit_run(
+        cls,
+        run_spec: Dict[str, Any],
+        caller_task_id: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Simulate Databricks Jobs API `runs/submit` endpoint with retry simulation."""
+        with cls._lock:
+            if caller_task_id:
+                cls._task_attempt_counts[caller_task_id] = (
+                    cls._task_attempt_counts.get(caller_task_id, 0) + 1
+                )
+
+            # Check for failure injection
+            failure_key = caller_task_id or run_spec.get("run_name") or "submit_run"
+            if failure_key in cls._injected_failures:
+                fail_info = cls._injected_failures[failure_key]
+                if fail_info["remaining_fails"] > 0:
+                    fail_info["remaining_fails"] -= 1
+                    raise fail_info["exception"]
+
+            run_id = cls._next_run_id
+            cls._next_run_id += 1
+
+            run_entry = {
+                "run_id": run_id,
+                "run_name": run_spec.get("run_name", f"run_{run_id}"),
+                "spec": run_spec,
+                "state": {
+                    "life_cycle_state": "TERMINATED",
+                    "result_state": "SUCCESS",
+                    "state_message": "Run completed successfully",
+                },
+                "tasks": run_spec.get("tasks", []),
+                "start_time": datetime.utcnow().isoformat(),
+                "end_time": datetime.utcnow().isoformat(),
+                "run_page_url": f"https://trading-risk.cloud.databricks.com/#job/run/{run_id}",
+            }
+            cls._runs[run_id] = run_entry
+            return run_entry
+
+    @classmethod
+    def run_now(
+        cls,
+        job_id: Union[int, str],
+        notebook_params: Optional[Dict[str, str]] = None,
+        caller_task_id: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Simulate Databricks Jobs API `jobs/run-now` endpoint with retry simulation."""
+        with cls._lock:
+            if caller_task_id:
+                cls._task_attempt_counts[caller_task_id] = (
+                    cls._task_attempt_counts.get(caller_task_id, 0) + 1
+                )
+
+            failure_key = caller_task_id or str(job_id) or "run_now"
+            if failure_key in cls._injected_failures:
+                fail_info = cls._injected_failures[failure_key]
+                if fail_info["remaining_fails"] > 0:
+                    fail_info["remaining_fails"] -= 1
+                    raise fail_info["exception"]
+
+            run_id = cls._next_run_id
+            cls._next_run_id += 1
+
+            run_entry = {
+                "run_id": run_id,
+                "job_id": job_id,
+                "parameters": notebook_params or {},
+                "state": {
+                    "life_cycle_state": "TERMINATED",
+                    "result_state": "SUCCESS",
+                    "state_message": "Run-now completed successfully",
+                },
+                "start_time": datetime.utcnow().isoformat(),
+                "end_time": datetime.utcnow().isoformat(),
+                "run_page_url": f"https://trading-risk.cloud.databricks.com/#job/{job_id}/run/{run_id}",
+            }
+            cls._runs[run_id] = run_entry
+            return run_entry
+
+    @classmethod
+    def get_run(cls, run_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieve execution state of a specific run."""
+        with cls._lock:
+            return cls._runs.get(run_id)
+
+    @classmethod
+    def cancel_run(cls, run_id: int) -> None:
+        """Cancel an in-flight run."""
+        with cls._lock:
+            if run_id in cls._runs:
+                cls._runs[run_id]["state"]["life_cycle_state"] = "TERMINATED"
+                cls._runs[run_id]["state"]["result_state"] = "CANCELED"
+
+    @classmethod
+    def get_all_runs(cls) -> List[Dict[str, Any]]:
+        """Retrieve all recorded runs."""
+        with cls._lock:
+            return list(cls._runs.values())
+
+
+class DatabricksSubmitRunOperator(BaseOperator):
+    """Submits a one-off run to Databricks.
+
+    Compatible with airflow.providers.databricks.operators.databricks.DatabricksSubmitRunOperator.
+    Supports Jinja template rendering across JSON specifications, notebook tasks,
+    and cluster definitions, with automated retry handling.
+    """
+
+    template_fields = (
+        "json",
+        "tasks",
+        "notebook_task",
+        "spark_python_task",
+        "new_cluster",
+        "existing_cluster_id",
+    )
+
+    def __init__(
+        self,
+        task_id: str,
+        json: Optional[Dict[str, Any]] = None,
+        tasks: Optional[List[Dict[str, Any]]] = None,
+        spark_jar_task: Optional[Dict[str, str]] = None,
+        notebook_task: Optional[Dict[str, str]] = None,
+        spark_python_task: Optional[Dict[str, Any]] = None,
+        spark_submit_task: Optional[Dict[str, str]] = None,
+        new_cluster: Optional[Dict[str, Any]] = None,
+        existing_cluster_id: Optional[str] = None,
+        databricks_conn_id: str = "databricks_default",
+        databricks_retry_limit: int = 3,
+        databricks_retry_delay: int = 60,
+        polling_period_seconds: int = 30,
+        do_xcom_push: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(task_id=task_id, **kwargs)
+        self.json = json or {}
+        self.tasks = tasks
+        self.spark_jar_task = spark_jar_task
+        self.notebook_task = notebook_task
+        self.spark_python_task = spark_python_task
+        self.spark_submit_task = spark_submit_task
+        self.new_cluster = new_cluster
+        self.existing_cluster_id = existing_cluster_id
+        self.databricks_conn_id = databricks_conn_id
+        self.databricks_retry_limit = databricks_retry_limit
+        self.databricks_retry_delay = databricks_retry_delay
+        self.polling_period_seconds = polling_period_seconds
+        self.do_xcom_push = do_xcom_push
+
+    def execute(self, context: Optional[Dict[str, Any]] = None) -> int:
+        rendered_json = _render_templates_in_obj(self.json, context)
+        run_spec = dict(rendered_json) if isinstance(rendered_json, dict) else {}
+
+        if self.tasks:
+            run_spec["tasks"] = _render_templates_in_obj(self.tasks, context)
+        if self.notebook_task:
+            run_spec["notebook_task"] = _render_templates_in_obj(self.notebook_task, context)
+        if self.spark_python_task:
+            run_spec["spark_python_task"] = _render_templates_in_obj(self.spark_python_task, context)
+        if self.spark_jar_task:
+            run_spec["spark_jar_task"] = _render_templates_in_obj(self.spark_jar_task, context)
+        if self.spark_submit_task:
+            run_spec["spark_submit_task"] = _render_templates_in_obj(self.spark_submit_task, context)
+        if self.new_cluster:
+            run_spec["new_cluster"] = _render_templates_in_obj(self.new_cluster, context)
+        if self.existing_cluster_id:
+            run_spec["existing_cluster_id"] = _render_jinja_string(self.existing_cluster_id, context)
+
+        run_res = DatabricksJobStateRegistry.submit_run(
+            run_spec=run_spec,
+            caller_task_id=self.task_id,
+            context=context,
+        )
+        run_id = int(run_res["run_id"])
+        return run_id
+
+
+class DatabricksRunNowOperator(BaseOperator):
+    """Triggers an immediate run of an existing Databricks Job.
+
+    Compatible with airflow.providers.databricks.operators.databricks.DatabricksRunNowOperator.
+    Supports Jinja template rendering of notebook parameters, automated retry handling,
+    and returns run_id.
+    """
+
+    template_fields = (
+        "job_id",
+        "notebook_params",
+        "python_params",
+        "python_named_params",
+        "spark_submit_params",
+    )
+
+    def __init__(
+        self,
+        task_id: str,
+        job_id: Union[int, str, None] = None,
+        job_name: Optional[str] = None,
+        notebook_params: Optional[Dict[str, str]] = None,
+        python_params: Optional[List[str]] = None,
+        python_named_params: Optional[Dict[str, str]] = None,
+        spark_submit_params: Optional[List[str]] = None,
+        databricks_conn_id: str = "databricks_default",
+        databricks_retry_limit: int = 3,
+        databricks_retry_delay: int = 60,
+        polling_period_seconds: int = 30,
+        do_xcom_push: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(task_id=task_id, **kwargs)
+        self.job_id = job_id
+        self.job_name = job_name
+        self.notebook_params = notebook_params or {}
+        self.python_params = python_params
+        self.python_named_params = python_named_params
+        self.spark_submit_params = spark_submit_params
+        self.databricks_conn_id = databricks_conn_id
+        self.databricks_retry_limit = databricks_retry_limit
+        self.databricks_retry_delay = databricks_retry_delay
+        self.polling_period_seconds = polling_period_seconds
+        self.do_xcom_push = do_xcom_push
+
+    def execute(self, context: Optional[Dict[str, Any]] = None) -> int:
+        rendered_params = _render_templates_in_obj(self.notebook_params, context)
+        rendered_job_id = self.job_id
+        if isinstance(self.job_id, str):
+            rendered_job_id = _render_jinja_string(self.job_id, context)
+
+        if not rendered_job_id and not self.job_name:
+            raise AirflowException("Either job_id or job_name must be provided to DatabricksRunNowOperator")
+
+        run_res = DatabricksJobStateRegistry.run_now(
+            job_id=rendered_job_id or self.job_name,
+            notebook_params=rendered_params,
+            caller_task_id=self.task_id,
+            context=context,
+        )
+        return int(run_res["run_id"])
+
+
 class TaskGroup:
     """Pure-Python TaskGroup modeling Apache Airflow 2.x TaskGroup."""
 

@@ -1,5 +1,9 @@
 """Airflow DAGs package."""
 
+from orchestration.airflow.dags.databricks_gold_dag import (
+    build_databricks_gold_dag,
+    databricks_gold_dag,
+)
 from orchestration.airflow.dags.dataproc_ephemeral_dag import (
     build_dataproc_ephemeral_dag,
     dataproc_ephemeral_dag,
@@ -14,4 +18,6 @@ __all__ = [
     "trading_risk_dag",
     "build_dataproc_ephemeral_dag",
     "dataproc_ephemeral_dag",
+    "build_databricks_gold_dag",
+    "databricks_gold_dag",
 ]
