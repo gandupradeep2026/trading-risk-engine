@@ -68,11 +68,21 @@ from batch.dataproc import (
     write_portfolio_flow_parquet,
     write_ticker_summaries_parquet,
 )
+from data_quality import (
+    CheckpointValidationResult,
+    DataQualityTelemetry,
+    ExpectationConfig,
+    ExpectationSuite,
+    GreatExpectationsValidator,
+    get_expectation_suite,
+)
 from orchestration.airflow import (
     AirflowConnection,
     AirflowEnvironmentConfig,
     AlertSeverity,
     GcpConnectionManager,
+    GreatExpectationsConfig,
+    GreatExpectationsOperator,
     NotificationDispatcher,
     PagerDutyHook,
     SlackNotificationHook,
@@ -155,4 +165,13 @@ __all__ = [
     "write_ticker_summaries_parquet",
     "write_portfolio_flow_parquet",
     "run_batch_aggregation",
+    # Data Quality & Great Expectations
+    "GreatExpectationsValidator",
+    "CheckpointValidationResult",
+    "DataQualityTelemetry",
+    "ExpectationConfig",
+    "ExpectationSuite",
+    "get_expectation_suite",
+    "GreatExpectationsConfig",
+    "GreatExpectationsOperator",
 ]

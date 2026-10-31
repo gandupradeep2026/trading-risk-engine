@@ -33,6 +33,9 @@ try:
     )
     from airflow.utils.task_group import TaskGroup  # type: ignore
     from airflow.utils.trigger_rule import TriggerRule  # type: ignore
+    from great_expectations_provider.operators.great_expectations import (  # type: ignore
+        GreatExpectationsOperator,
+    )
 except (ImportError, ModuleNotFoundError):
     from orchestration.airflow.airflow_compat import (
         DAG,
@@ -42,6 +45,7 @@ except (ImportError, ModuleNotFoundError):
         DataprocDeleteClusterOperator,
         DataprocSubmitJobOperator,
         EmptyOperator,
+        GreatExpectationsOperator,
         TaskGroup,
         TriggerRule,
     )
@@ -58,6 +62,7 @@ from orchestration.airflow.config.dataproc_cluster_config import (
     DataprocBatchJobConfig,
     DataprocEphemeralClusterConfig,
 )
+from orchestration.airflow.config.great_expectations_config import GreatExpectationsConfig
 
 
 def build_trading_risk_dag(
@@ -230,16 +235,51 @@ def build_trading_risk_dag(
         # ---------------------------------------------------------------------
         # TaskGroup: Data Quality Validation Gates (Day 21)
         # ---------------------------------------------------------------------
+        ge_cfg = GreatExpectationsConfig.from_env()
+
         with TaskGroup("data_quality_gates", tooltip="Great Expectations data quality suites") as dq_group:
-            validate_silver = EmptyOperator(
+            validate_silver_suite = GreatExpectationsOperator(
                 task_id="validate_silver_suite",
+                checkpoint_name=ge_cfg.silver_checkpoint_name,
+                expectation_suite_name=ge_cfg.silver_ticks_suite,
+                data_asset_name="silver_market_ticks",
+                data_asset_path=ge_cfg.get_silver_ticks_path("{{ ds }}"),
+                data_context_root_dir=ge_cfg.data_context_root_dir,
+                fail_task_on_validation_failure=ge_cfg.fail_task_on_validation_failure,
+                retries=ge_cfg.checkpoint_retry_limit,
+                retry_delay=timedelta(seconds=ge_cfg.checkpoint_retry_delay_seconds),
+                retry_exponential_backoff=ge_cfg.retry_exponential_backoff,
+                max_retry_delay=timedelta(seconds=ge_cfg.max_retry_delay_seconds),
+                on_retry_callback=create_retry_callback(),
+                on_failure_callback=create_failure_callback(),
                 doc_md="Validates Great Expectations test suites on Silver layer.",
             )
-            validate_gold = EmptyOperator(
+            validate_gold_suite = GreatExpectationsOperator(
                 task_id="validate_gold_suite",
+                checkpoint_name=ge_cfg.gold_checkpoint_name,
+                expectation_suite_name=ge_cfg.gold_var_suite,
+                data_asset_name="gold_portfolio_var",
+                data_asset_path=ge_cfg.get_gold_var_path("{{ ds }}"),
+                data_context_root_dir=ge_cfg.data_context_root_dir,
+                fail_task_on_validation_failure=ge_cfg.fail_task_on_validation_failure,
+                retries=ge_cfg.checkpoint_retry_limit,
+                retry_delay=timedelta(seconds=ge_cfg.checkpoint_retry_delay_seconds),
+                retry_exponential_backoff=ge_cfg.retry_exponential_backoff,
+                max_retry_delay=timedelta(seconds=ge_cfg.max_retry_delay_seconds),
+                on_retry_callback=create_retry_callback(),
+                on_failure_callback=create_failure_callback(),
                 doc_md="Validates statistical bounds and completeness on Gold VaR layer.",
             )
-            validate_silver >> validate_gold
+            publish_data_docs = GreatExpectationsOperator(
+                task_id="publish_data_docs",
+                checkpoint_name=ge_cfg.master_checkpoint_name,
+                expectation_suite_name=ge_cfg.gold_var_suite,
+                data_context_root_dir=ge_cfg.data_context_root_dir,
+                data_docs_dir=f"uncommitted/data_docs/{cfg.environment}",
+                fail_task_on_validation_failure=False,
+                doc_md="Compiles and publishes consolidated Great Expectations HTML Data Docs.",
+            )
+            validate_silver_suite >> validate_gold_suite >> publish_data_docs
 
         # ---------------------------------------------------------------------
         # TaskGroup: BigQuery Enterprise Data Warehouse & dbt (Days 22-24)

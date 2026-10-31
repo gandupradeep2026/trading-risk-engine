@@ -8,6 +8,10 @@ from orchestration.airflow.dags.dataproc_ephemeral_dag import (
     build_dataproc_ephemeral_dag,
     dataproc_ephemeral_dag,
 )
+from orchestration.airflow.dags.great_expectations_dag import (
+    build_great_expectations_dag,
+    great_expectations_dag,
+)
 from orchestration.airflow.dags.trading_risk_daily_batch_dag import (
     build_trading_risk_dag,
     trading_risk_dag,
@@ -20,4 +24,6 @@ __all__ = [
     "dataproc_ephemeral_dag",
     "build_databricks_gold_dag",
     "databricks_gold_dag",
+    "build_great_expectations_dag",
+    "great_expectations_dag",
 ]

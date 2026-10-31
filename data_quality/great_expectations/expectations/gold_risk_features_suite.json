@@ -1,0 +1,157 @@
+{
+  "data_asset_type": null,
+  "expectation_suite_name": "gold_risk_features_suite",
+  "expectations": [
+    {
+      "expectation_type": "expect_table_row_count_to_be_between",
+      "kwargs": {
+        "min_value": 1
+      },
+      "meta": {
+        "description": "Ensure Gold risk features partition contains at least 1 record"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "feature_key"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "portfolio_id"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "ticker"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "asset_class"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "mark_to_market_price"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "liquidity_score"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "order_imbalance_ratio"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "feature_key"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "portfolio_id"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "ticker"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "asset_class"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "mark_to_market_price"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "liquidity_score"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "order_imbalance_ratio"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_unique",
+      "kwargs": {
+        "column": "feature_key"
+      },
+      "meta": {
+        "description": "Ensure uniqueness of feature key per position per valuation window"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "asset_class",
+        "value_set": ["EQUITY", "FX", "COMMODITY", "CRYPTO", "ETF"]
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "mark_to_market_price",
+        "min_value": 0.0001
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "liquidity_score",
+        "min_value": 0.0,
+        "max_value": 1.0
+      },
+      "meta": {
+        "description": "Liquidity score normalized between [0, 1]"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "order_imbalance_ratio",
+        "min_value": -1.0,
+        "max_value": 1.0
+      },
+      "meta": {
+        "description": "Order flow imbalance bounded between [-1, 1]"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "aggressive_order_ratio",
+        "min_value": 0.0,
+        "max_value": 1.0
+      }
+    }
+  ],
+  "meta": {
+    "great_expectations_version": "0.18.12",
+    "layer": "gold",
+    "table": "gold_risk_feature_store"
+  }
+}

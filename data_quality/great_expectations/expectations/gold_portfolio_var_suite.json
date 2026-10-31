@@ -1,0 +1,223 @@
+{
+  "data_asset_type": null,
+  "expectation_suite_name": "gold_portfolio_var_suite",
+  "expectations": [
+    {
+      "expectation_type": "expect_table_row_count_to_be_between",
+      "kwargs": {
+        "min_value": 1
+      },
+      "meta": {
+        "description": "Ensure Gold portfolio VaR partition contains at least 1 record"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "var_id"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "portfolio_id"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "valuation_date"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "gross_exposure_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "parametric_var_95_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "parametric_var_99_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "monte_carlo_var_95_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "monte_carlo_var_99_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "expected_shortfall_cvar_95_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "expected_shortfall_cvar_99_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "var_id"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "portfolio_id"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "valuation_date"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "gross_exposure_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "parametric_var_95_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "parametric_var_99_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "monte_carlo_var_95_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "monte_carlo_var_99_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "expected_shortfall_cvar_95_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "expected_shortfall_cvar_99_usd"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_unique",
+      "kwargs": {
+        "column": "portfolio_id"
+      },
+      "meta": {
+        "description": "Ensure single partition valuation row per portfolio per day"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "gross_exposure_usd",
+        "min_value": 0.0
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "parametric_var_95_usd",
+        "min_value": 0.0
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "parametric_var_99_usd",
+        "min_value": 0.0
+      }
+    },
+    {
+      "expectation_type": "expect_column_pair_values_a_to_be_greater_than_or_equal_to_b",
+      "kwargs": {
+        "column_A": "parametric_var_99_usd",
+        "column_B": "parametric_var_95_usd"
+      },
+      "meta": {
+        "description": "Parametric VaR confidence monotonicity: VaR_99 must be >= VaR_95"
+      }
+    },
+    {
+      "expectation_type": "expect_column_pair_values_a_to_be_greater_than_or_equal_to_b",
+      "kwargs": {
+        "column_A": "monte_carlo_var_99_usd",
+        "column_B": "monte_carlo_var_95_usd"
+      },
+      "meta": {
+        "description": "Monte Carlo VaR confidence monotonicity: MC VaR_99 must be >= MC VaR_95"
+      }
+    },
+    {
+      "expectation_type": "expect_column_pair_values_a_to_be_greater_than_or_equal_to_b",
+      "kwargs": {
+        "column_A": "expected_shortfall_cvar_95_usd",
+        "column_B": "monte_carlo_var_95_usd"
+      },
+      "meta": {
+        "description": "Coherent tail risk: CVaR_95 must be >= MC VaR_95"
+      }
+    },
+    {
+      "expectation_type": "expect_column_pair_values_a_to_be_greater_than_or_equal_to_b",
+      "kwargs": {
+        "column_A": "expected_shortfall_cvar_99_usd",
+        "column_B": "monte_carlo_var_99_usd"
+      },
+      "meta": {
+        "description": "Coherent tail risk: CVaR_99 must be >= MC VaR_99"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "risk_regime",
+        "value_set": [
+          "LOW_RISK",
+          "MODERATE_RISK",
+          "ELEVATED_RISK",
+          "HIGH_RISK",
+          "CRITICAL_BREACH"
+        ]
+      }
+    }
+  ],
+  "meta": {
+    "great_expectations_version": "0.18.12",
+    "layer": "gold",
+    "table": "gold_portfolio_var"
+  }
+}

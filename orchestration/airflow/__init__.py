@@ -8,6 +8,8 @@ from orchestration.airflow.airflow_compat import (
     DataprocCreateClusterOperator,
     DataprocDeleteClusterOperator,
     DataprocSubmitJobOperator,
+    GreatExpectationsOperator,
+    GreatExpectationsValidationRegistry,
     TriggerRule,
 )
 from orchestration.airflow.config.airflow_config import AirflowEnvironmentConfig
@@ -19,6 +21,7 @@ from orchestration.airflow.config.dataproc_cluster_config import (
     DataprocBatchJobConfig,
     DataprocEphemeralClusterConfig,
 )
+from orchestration.airflow.config.great_expectations_config import GreatExpectationsConfig
 from orchestration.airflow.connections.connection_manager import (
     AirflowConnection,
     GcpConnectionManager,
@@ -26,6 +29,10 @@ from orchestration.airflow.connections.connection_manager import (
 from orchestration.airflow.dags.databricks_gold_dag import (
     build_databricks_gold_dag,
     databricks_gold_dag,
+)
+from orchestration.airflow.dags.great_expectations_dag import (
+    build_great_expectations_dag,
+    great_expectations_dag,
 )
 from orchestration.airflow.hooks.notification_dispatcher import NotificationDispatcher
 from orchestration.airflow.hooks.pagerduty_hook import PagerDutyHook
@@ -58,4 +65,10 @@ __all__ = [
     "DatabricksJobStateRegistry",
     "build_databricks_gold_dag",
     "databricks_gold_dag",
+    # Great Expectations Data Quality Orchestration
+    "GreatExpectationsConfig",
+    "GreatExpectationsOperator",
+    "GreatExpectationsValidationRegistry",
+    "build_great_expectations_dag",
+    "great_expectations_dag",
 ]

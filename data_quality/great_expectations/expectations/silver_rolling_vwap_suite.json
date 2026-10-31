@@ -1,0 +1,159 @@
+{
+  "data_asset_type": null,
+  "expectation_suite_name": "silver_rolling_vwap_suite",
+  "expectations": [
+    {
+      "expectation_type": "expect_table_row_count_to_be_between",
+      "kwargs": {
+        "min_value": 1
+      },
+      "meta": {
+        "description": "Ensure Silver rolling VWAP partition contains at least 1 record"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "ticker"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "asset_class"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "vwap"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "upper_band"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "lower_band"
+      }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": {
+        "column": "price_stddev"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "ticker"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "asset_class"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "window_start"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "window_end"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "vwap"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "upper_band"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "lower_band"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": {
+        "column": "price_stddev"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "vwap",
+        "min_value": 0.0001
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "price_stddev",
+        "min_value": 0.0
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "bandwidth_bps",
+        "min_value": 0.0
+      }
+    },
+    {
+      "expectation_type": "expect_column_pair_values_a_to_be_greater_than_or_equal_to_b",
+      "kwargs": {
+        "column_A": "upper_band",
+        "column_B": "vwap"
+      },
+      "meta": {
+        "description": "Bollinger Upper Band must be >= VWAP"
+      }
+    },
+    {
+      "expectation_type": "expect_column_pair_values_a_to_be_greater_than_or_equal_to_b",
+      "kwargs": {
+        "column_A": "vwap",
+        "column_B": "lower_band"
+      },
+      "meta": {
+        "description": "VWAP must be >= Bollinger Lower Band"
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "volatility_regime",
+        "value_set": ["LOW", "NORMAL", "HIGH", "EXTREME"]
+      }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "trend",
+        "value_set": ["BULLISH", "BEARISH", "NEUTRAL"]
+      }
+    }
+  ],
+  "meta": {
+    "great_expectations_version": "0.18.12",
+    "layer": "silver",
+    "table": "silver_rolling_vwap"
+  }
+}

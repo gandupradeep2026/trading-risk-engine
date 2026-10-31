@@ -90,6 +90,7 @@ resource "google_composer_environment" "risk_composer" {
         apache-airflow-providers-databricks = ">=6.5.0"
         slack-sdk                           = ">=3.27.0"
         pydantic                            = ">=2.6.0"
+        great-expectations                  = ">=0.18.12"
       }
 
       env_variables = {
@@ -101,6 +102,7 @@ resource "google_composer_environment" "risk_composer" {
         AIRFLOW_VAR_CLOUDSQL_INSTANCE                = var.cloudsql_instance_name
         AIRFLOW_VAR_SLACK_WEBHOOK_SECRET_ID          = var.slack_webhook_secret_id
         AIRFLOW_VAR_PAGERDUTY_ROUTING_KEY_SECRET_ID  = var.pagerduty_routing_key_secret_id
+        AIRFLOW_VAR_GREAT_EXPECTATIONS_ROOT          = "data_quality/great_expectations"
       }
     }
 

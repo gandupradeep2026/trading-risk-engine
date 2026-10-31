@@ -1,9 +1,10 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 21
+- **Current Milestone Target**: Day 22
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
+- **Execution Constraint (since 2026-10-31)**: GCP free trial has ended and the account will NOT be upgraded to paid. All remaining milestones MUST be implemented and verified 100% locally at zero cost: no `gcloud`/`terraform apply`, no real GCP API calls, no credentials. Use local substitutes (DuckDB / `dbt-duckdb` for BigQuery, SQLite for Cloud SQL, local filesystem for GCS, existing in-memory mocks for Pub/Sub/Kafka/Dataproc/Databricks/Airflow). Terraform/SQL for GCP is still authored as deployable code but validated only via static tests.
 
 ---
 
@@ -29,7 +30,7 @@
 - [x] **Day 18**: Databricks Gold layer: portfolio Value-at-Risk (VaR) calculation and risk feature store.
 - [x] **Day 19**: Airflow DAG orchestrating ephemeral Dataproc cluster creation, job execution, and teardown.
 - [x] **Day 20**: Airflow DAG orchestrating Databricks Gold pipelines with automated retry logic.
-- [ ] **Day 21**: Great Expectations data quality test suites integrated into the Airflow DAG pipeline.
+- [x] **Day 21**: Great Expectations data quality test suites integrated into the Airflow DAG pipeline.
 - [ ] **Day 22**: BigQuery DDL: partitioned and clustered star-schema tables for trades, tickers, and risk stats.
 - [ ] **Day 23**: dbt project initialization with staging and intermediate SQL models for BigQuery.
 - [ ] **Day 24**: dbt mart models and BigQuery materialized views for real-time market performance analytics.
@@ -555,6 +556,36 @@
   - Comprehensive Zero-Cost Test Suite (`tests/test_databricks_gold_dag.py`):
     - 25 unit and integration tests verifying config invariants, SparkConf spot cluster specifications, submit-run dictionary payloads, registry lifecycle transitions, operator template rendering, transient failure recovery with automated exponential backoff retries, permanent failure escalation triggering failure callbacks, standalone DAG topology and acyclicity, master lakehouse DAG integration, and end-to-end multi-task execution with Spot worker preemption recovery.
 - **Verification Status**: 518/518 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 21 - 2026-11-01
+- **Milestone Completed**: Great Expectations data quality test suites integrated into the Airflow DAG pipeline.
+- **Key Changes Implemented**:
+  - Configured root Great Expectations workspace in `data_quality/great_expectations/great_expectations.yml` with dual stores (Filesystem and GCS), SparkDF/Pandas execution engines, and local/GCS Data Docs sites.
+  - Authored production JSON expectation suites in `data_quality/great_expectations/expectations/` and programmatic factories in `data_quality/suite_definitions.py`:
+    - `silver_market_ticks_suite`: schema conformance, positive bid/ask prices, positive volumes, non-crossed quote constraint (`ask >= bid`), spread bounds (`relative_spread_bps <= 2000`).
+    - `silver_trade_orders_suite`: primary key uniqueness on `order_id`, BUY/SELL side validation, valid order types, positive quantities and notional USD.
+    - `silver_rolling_vwap_suite`: Bollinger volatility bands bounds (`upper_band >= vwap >= lower_band`), non-negative price variance/stddev, volatility regime classifications.
+    - `gold_portfolio_var_suite`: Value-at-Risk mathematical ordering invariants ($\text{VaR}_{99} \ge \text{VaR}_{95} \ge 0$), coherent tail risk ($\text{CVaR}_{95} \ge \text{MC VaR}_{95}$, $\text{CVaR}_{99} \ge \text{MC VaR}_{99}$), non-negative gross exposures, risk regime classification.
+    - `gold_risk_features_suite`: normalized liquidity scores in $[0, 1]$, order imbalance bounded in $[-1, 1]$, mark-to-market positive prices.
+  - Authored checkpoint YAML specifications in `data_quality/great_expectations/checkpoints/` (`silver_quality_checkpoint.yml`, `gold_quality_checkpoint.yml`, `lakehouse_master_checkpoint.yml`).
+  - Built zero-cost hermetic Great Expectations validation engine in `data_quality/engine.py`:
+    - Evaluates expectation suites against PyArrow tables, Parquet files, Delta datasets, and dictionaries.
+    - Produces standard Great Expectations JSON validation results conforming to GE schema (`success`, `statistics`, `results`, `meta`).
+    - Standalone HTML Data Docs generator producing responsive validation reports with summary metrics, pass/fail status badges, expectation breakdown table, and automatic `index.html` compilation.
+    - Operational telemetry tracker (`DataQualityTelemetry`) with Prometheus metrics text exposition formatting (`dq_validations_total`, `dq_expectations_evaluated_total`, etc.).
+  - Built CLI checkpoint runner in `data_quality/run_checkpoints.py` and bash runner script `orchestration/scripts/run_quality_gate.sh`.
+  - Built Airflow compatibility operator & in-memory state registry in `orchestration/airflow/airflow_compat.py`:
+    - `GreatExpectationsValidationRegistry`: thread-safe in-memory state machine tracking validations, attempt counts, data docs, and failure/result injection.
+    - `GreatExpectationsOperator`: pure-Python operator compatible with `great_expectations_provider.operators.great_expectations.GreatExpectationsOperator` with recursive Jinja parameter rendering (`{{ ds }}`, `{{ params.* }}`), automated retry handling, and AirflowException escalation upon validation failure.
+  - Production Airflow DAG Integration:
+    - Standalone DAG `orchestration/airflow/dags/great_expectations_dag.py` (`great_expectations_quality_pipeline`) chaining `start_quality_gates >> TaskGroup("silver_quality_validations") >> TaskGroup("gold_quality_validations") >> publish_data_docs >> end_quality_gates` with automated retries and callbacks.
+    - Upgraded master lakehouse DAG `orchestration/airflow/dags/trading_risk_daily_batch_dag.py`: replaced placeholder EmptyOperators in `data_quality_gates` TaskGroup with production `GreatExpectationsOperator` instances for Silver quality gate, Gold quality gate, and Data Docs publication.
+    - Added `great-expectations` to Cloud Composer Terraform module `terraform/modules/composer/main.tf`.
+    - Package exports updated in `data_quality/__init__.py`, `orchestration/airflow/__init__.py`, `orchestration/airflow/config/__init__.py`, `orchestration/airflow/dags/__init__.py`, and `batch/__init__.py`.
+  - Comprehensive zero-cost test suite in `tests/test_great_expectations_data_quality.py`:
+    - 32 new unit and integration tests verifying config invariants, JSON suite validity, PyArrow validation across all 5 suites, domain breach detection (crossed quotes, duplicate order IDs, negative prices, VaR ordering inversions, tail risk inversions, liquidity score violations), HTML Data Docs generation, Prometheus metrics formatting, operator Jinja rendering, transient failure retry recovery, callback escalation, standalone DAG acyclicity, and master lakehouse DAG integration.
+- **Verification Status**: 550/550 tests passed cleanly (`python -m pytest tests/ -v`).
+
 
 
 

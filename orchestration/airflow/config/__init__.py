@@ -9,6 +9,7 @@ from orchestration.airflow.config.dataproc_cluster_config import (
     DataprocBatchJobConfig,
     DataprocEphemeralClusterConfig,
 )
+from orchestration.airflow.config.great_expectations_config import GreatExpectationsConfig
 
 __all__ = [
     "AirflowEnvironmentConfig",
@@ -16,4 +17,5 @@ __all__ = [
     "DataprocBatchJobConfig",
     "DatabricksGoldJobConfig",
     "DatabricksTaskRetryConfig",
+    "GreatExpectationsConfig",
 ]

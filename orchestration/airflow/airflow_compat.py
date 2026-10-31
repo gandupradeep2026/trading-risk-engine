@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import datetime, timedelta
+from pathlib import Path
 import threading
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
 
@@ -247,7 +248,7 @@ DummyOperator = EmptyOperator
 
 
 def _render_jinja_string(template: str, context: Optional[Dict[str, Any]]) -> str:
-    """Helper to render basic Airflow Jinja template parameters (ds, ds_nodash, try_number)."""
+    """Helper to render basic Airflow Jinja template parameters (ds, ds_nodash, try_number, params)."""
     if not isinstance(template, str) or "{{" not in template:
         return template
     if not context:
@@ -256,8 +257,8 @@ def _render_jinja_string(template: str, context: Optional[Dict[str, Any]]) -> st
     exec_date = context.get("execution_date") or datetime.utcnow()
     ti = context.get("task_instance") or context.get("ti")
     try_num = getattr(ti, "try_number", 1) if ti else 1
-    ds = exec_date.strftime("%Y-%m-%d")
-    ds_nodash = exec_date.strftime("%Y%m%d")
+    ds = context.get("ds") or exec_date.strftime("%Y-%m-%d")
+    ds_nodash = context.get("ds_nodash") or ds.replace("-", "")
 
     res = res.replace("{{ ds }}", ds)
     res = res.replace("{{ds}}", ds)
@@ -267,6 +268,13 @@ def _render_jinja_string(template: str, context: Optional[Dict[str, Any]]) -> st
     res = res.replace("{{task_instance.try_number}}", str(try_num))
     res = res.replace("{{ ti.try_number }}", str(try_num))
     res = res.replace("{{ti.try_number}}", str(try_num))
+
+    params = context.get("params") or {}
+    if isinstance(params, dict):
+        for pk, pv in params.items():
+            res = res.replace(f"{{{{ params.{pk} }}}}", str(pv))
+            res = res.replace(f"{{{{params.{pk}}}}}", str(pv))
+
     return res
 
 
@@ -822,6 +830,312 @@ class DatabricksRunNowOperator(BaseOperator):
             context=context,
         )
         return int(run_res["run_id"])
+
+
+class GreatExpectationsValidationRegistry:
+    """Thread-safe state registry for tracking Great Expectations validations in Airflow tests."""
+    _lock = threading.Lock()
+    _validations: Dict[str, List[Dict[str, Any]]] = {}
+    _injected_failures: Dict[str, Dict[str, Any]] = {}
+    _injected_results: Dict[str, Dict[str, Any]] = {}
+    _task_attempt_counts: Dict[str, int] = {}
+    _registered_data: Dict[str, Any] = {}
+
+    @classmethod
+    def reset(cls) -> None:
+        with cls._lock:
+            cls._validations.clear()
+            cls._injected_failures.clear()
+            cls._injected_results.clear()
+            cls._task_attempt_counts.clear()
+            cls._registered_data.clear()
+
+    @classmethod
+    def register_data(cls, suite_name: str, data: Any) -> None:
+        with cls._lock:
+            cls._registered_data[suite_name] = data
+
+    @classmethod
+    def get_registered_data(cls, suite_name: str) -> Optional[Any]:
+        with cls._lock:
+            return cls._registered_data.get(suite_name)
+
+    @classmethod
+    def inject_failure(
+        cls,
+        suite_or_task_id: str,
+        exception: Optional[Exception] = None,
+        num_failures: int = 1,
+    ) -> None:
+        with cls._lock:
+            cls._injected_failures[suite_or_task_id] = {
+                "remaining_fails": num_failures,
+                "exception": exception or AirflowException(f"Simulated execution failure for {suite_or_task_id}"),
+            }
+
+    @classmethod
+    def inject_validation_result(
+        cls,
+        suite_or_task_id: str,
+        success: bool = False,
+        failed_expectations: int = 1,
+    ) -> None:
+        with cls._lock:
+            cls._injected_results[suite_or_task_id] = {
+                "success": success,
+                "failed_expectations": failed_expectations,
+            }
+
+    @classmethod
+    def record_validation(cls, suite_name: str, result: Dict[str, Any]) -> None:
+        with cls._lock:
+            if suite_name not in cls._validations:
+                cls._validations[suite_name] = []
+            cls._validations[suite_name].append(result)
+
+    @classmethod
+    def get_validations(cls, suite_name: Optional[str] = None) -> List[Dict[str, Any]]:
+        with cls._lock:
+            if suite_name:
+                return list(cls._validations.get(suite_name, []))
+            all_v: List[Dict[str, Any]] = []
+            for v_list in cls._validations.values():
+                all_v.extend(v_list)
+            return all_v
+
+    @classmethod
+    def get_latest_validation(cls, suite_name: str) -> Optional[Dict[str, Any]]:
+        with cls._lock:
+            v_list = cls._validations.get(suite_name, [])
+            return v_list[-1] if v_list else None
+
+    @classmethod
+    def record_attempt(cls, task_id: str) -> int:
+        with cls._lock:
+            cls._task_attempt_counts[task_id] = cls._task_attempt_counts.get(task_id, 0) + 1
+            return cls._task_attempt_counts[task_id]
+
+    @classmethod
+    def get_attempt_count(cls, task_id: str) -> int:
+        with cls._lock:
+            return cls._task_attempt_counts.get(task_id, 0)
+
+
+def _generate_compliant_mock_data(suite_name: str) -> Dict[str, List[Any]]:
+    """Generate compliant synthetic in-memory batches for known expectation suites."""
+    if "tick" in suite_name:
+        return {
+            "ticker": ["AAPL", "MSFT", "GOOGL", "NVDA", "BTCUSD"],
+            "asset_class": ["EQUITY", "EQUITY", "EQUITY", "EQUITY", "CRYPTO"],
+            "bid": [150.0, 300.0, 140.0, 120.0, 60000.0],
+            "ask": [150.05, 300.10, 140.05, 120.04, 60005.0],
+            "last_price": [150.02, 300.05, 140.02, 120.02, 60002.5],
+            "volume": [100.0, 250.0, 150.0, 500.0, 2.5],
+            "timestamp": ["2026-11-01T00:00:00Z"] * 5,
+            "spread": [0.05, 0.10, 0.05, 0.04, 5.0],
+            "mid_price": [150.025, 300.05, 140.025, 120.02, 60002.5],
+            "relative_spread_bps": [3.33, 3.33, 3.57, 3.33, 0.83],
+            "quote_condition": ["TIGHT_SPREAD", "TIGHT_SPREAD", "TIGHT_SPREAD", "TIGHT_SPREAD", "TIGHT_SPREAD"],
+            "is_crossed_quote": [False, False, False, False, False],
+        }
+    if "order" in suite_name:
+        return {
+            "order_id": [f"ord_{i}" for i in range(1, 6)],
+            "portfolio_id": ["PORT-01"] * 5,
+            "ticker": ["AAPL", "MSFT", "GOOGL", "NVDA", "BTCUSD"],
+            "side": ["BUY", "SELL", "BUY", "BUY", "SELL"],
+            "order_type": ["MARKET", "LIMIT", "MARKET", "LIMIT", "MARKET"],
+            "quantity": [10.0, 20.0, 15.0, 50.0, 0.5],
+            "price": [150.0, 300.0, 140.0, 120.0, 60000.0],
+            "notional_usd": [1500.0, 6000.0, 2100.0, 6000.0, 30000.0],
+            "order_category": ["EQUITY_ORDER", "EQUITY_ORDER", "EQUITY_ORDER", "EQUITY_ORDER", "CRYPTO_ORDER"],
+            "notional_tier": ["STANDARD", "STANDARD", "STANDARD", "STANDARD", "STANDARD"],
+            "timestamp": ["2026-11-01T00:00:00Z"] * 5,
+        }
+    if "vwap" in suite_name:
+        return {
+            "ticker": ["AAPL", "MSFT", "GOOGL", "NVDA", "BTCUSD"],
+            "asset_class": ["EQUITY", "EQUITY", "EQUITY", "EQUITY", "CRYPTO"],
+            "window_start": ["2026-11-01T00:00:00Z"] * 5,
+            "window_end": ["2026-11-01T00:05:00Z"] * 5,
+            "vwap": [150.0, 300.0, 140.0, 120.0, 60000.0],
+            "upper_band": [152.0, 304.0, 142.0, 122.0, 60500.0],
+            "lower_band": [148.0, 296.0, 138.0, 118.0, 59500.0],
+            "price_stddev": [1.0, 2.0, 1.0, 1.0, 250.0],
+            "bandwidth_bps": [266.0, 266.0, 285.0, 333.0, 166.0],
+            "volatility_regime": ["NORMAL"] * 5,
+            "trend": ["NEUTRAL"] * 5,
+        }
+    if "var" in suite_name:
+        return {
+            "var_id": ["var_001"],
+            "portfolio_id": ["PORT-ALPHA"],
+            "valuation_date": ["2026-11-01"],
+            "gross_exposure_usd": [1500000.0],
+            "parametric_var_95_usd": [45000.0],
+            "parametric_var_99_usd": [65000.0],
+            "monte_carlo_var_95_usd": [46000.0],
+            "monte_carlo_var_99_usd": [66000.0],
+            "expected_shortfall_cvar_95_usd": [55000.0],
+            "expected_shortfall_cvar_99_usd": [75000.0],
+            "risk_regime": ["MODERATE_RISK"],
+        }
+    # default features
+    return {
+        "feature_key": [f"feat_{i}" for i in range(1, 6)],
+        "portfolio_id": ["PORT-ALPHA"] * 5,
+        "ticker": ["AAPL", "MSFT", "GOOGL", "NVDA", "BTCUSD"],
+        "asset_class": ["EQUITY", "EQUITY", "EQUITY", "EQUITY", "CRYPTO"],
+        "mark_to_market_price": [150.0, 300.0, 140.0, 120.0, 60000.0],
+        "liquidity_score": [0.95, 0.92, 0.88, 0.90, 0.75],
+        "order_imbalance_ratio": [0.10, -0.05, 0.20, -0.15, 0.05],
+        "aggressive_order_ratio": [0.4, 0.3, 0.5, 0.2, 0.6],
+    }
+
+
+class GreatExpectationsOperator(BaseOperator):
+    """Executes a Great Expectations validation checkpoint or suite against a data asset.
+
+    Compatible with great_expectations_provider.operators.great_expectations.GreatExpectationsOperator.
+    Supports Jinja template rendering across paths, suite names, checkpoints, and kwargs.
+    """
+
+    template_fields = (
+        "data_asset_path",
+        "checkpoint_name",
+        "expectation_suite_name",
+        "data_asset_name",
+        "checkpoint_kwargs",
+    )
+
+    def __init__(
+        self,
+        task_id: str,
+        data_context_root_dir: Optional[str] = None,
+        checkpoint_name: Optional[str] = None,
+        expectation_suite_name: Optional[str] = None,
+        data_asset_name: Optional[str] = None,
+        data_asset_path: Optional[str] = None,
+        dataframe_to_validate: Optional[Any] = None,
+        checkpoint_kwargs: Optional[Dict[str, Any]] = None,
+        fail_task_on_validation_failure: bool = True,
+        return_full_result: bool = False,
+        data_docs_dir: Optional[str] = None,
+        do_xcom_push: bool = True,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(task_id=task_id, **kwargs)
+        self.data_context_root_dir = data_context_root_dir
+        self.checkpoint_name = checkpoint_name
+        self.expectation_suite_name = expectation_suite_name
+        self.data_asset_name = data_asset_name
+        self.data_asset_path = data_asset_path
+        self.dataframe_to_validate = dataframe_to_validate
+        self.checkpoint_kwargs = checkpoint_kwargs or {}
+        self.fail_task_on_validation_failure = fail_task_on_validation_failure
+        self.return_full_result = return_full_result
+        self.data_docs_dir = data_docs_dir
+        self.do_xcom_push = do_xcom_push
+
+    def execute(self, context: Optional[Dict[str, Any]] = None) -> Any:
+        GreatExpectationsValidationRegistry.record_attempt(self.task_id)
+
+        rendered_suite = (
+            _render_jinja_string(self.expectation_suite_name, context)
+            if self.expectation_suite_name
+            else None
+        )
+        rendered_asset_path = (
+            _render_jinja_string(self.data_asset_path, context)
+            if self.data_asset_path
+            else None
+        )
+        rendered_checkpoint = (
+            _render_jinja_string(self.checkpoint_name, context)
+            if self.checkpoint_name
+            else None
+        )
+        rendered_kwargs = _render_templates_in_obj(self.checkpoint_kwargs, context)
+
+        # 1. Check for injected execution failures (transient/permanent)
+        for key in (self.task_id, rendered_suite, rendered_checkpoint):
+            if key and key in GreatExpectationsValidationRegistry._injected_failures:
+                fail_info = GreatExpectationsValidationRegistry._injected_failures[key]
+                if fail_info["remaining_fails"] > 0:
+                    fail_info["remaining_fails"] -= 1
+                    raise fail_info["exception"]
+
+        # 2. Check for injected validation result
+        for key in (self.task_id, rendered_suite, rendered_checkpoint):
+            if key and key in GreatExpectationsValidationRegistry._injected_results:
+                inj = GreatExpectationsValidationRegistry._injected_results[key]
+                res_dict = {
+                    "success": inj["success"],
+                    "suite_name": rendered_suite or "unknown_suite",
+                    "run_id": f"injected_{self.task_id}",
+                    "statistics": {
+                        "evaluated_expectations": 10,
+                        "successful_expectations": 10 - inj["failed_expectations"],
+                        "unsuccessful_expectations": inj["failed_expectations"],
+                        "success_percent": round((10 - inj["failed_expectations"]) / 10.0 * 100.0, 2),
+                    },
+                    "results": [],
+                    "meta": {},
+                }
+                GreatExpectationsValidationRegistry.record_validation(
+                    rendered_suite or self.task_id, res_dict
+                )
+                if not inj["success"] and self.fail_task_on_validation_failure:
+                    raise AirflowException(
+                        f"Great Expectations validation failed for suite '{rendered_suite}': "
+                        f"{inj['failed_expectations']} expectations failed"
+                    )
+                return res_dict if self.return_full_result else res_dict["statistics"]
+
+        # 3. Resolve target dataset
+        target_data: Any = None
+        if self.dataframe_to_validate is not None:
+            target_data = self.dataframe_to_validate
+        elif rendered_asset_path:
+            p = Path(rendered_asset_path)
+            if p.exists():
+                target_data = rendered_asset_path
+            else:
+                # GCS URI or non-existent path: check registered data or compliant mock
+                target_data = (
+                    GreatExpectationsValidationRegistry.get_registered_data(rendered_suite or "")
+                    or _generate_compliant_mock_data(rendered_suite or "")
+                )
+        else:
+            target_data = (
+                GreatExpectationsValidationRegistry.get_registered_data(rendered_suite or "")
+                or _generate_compliant_mock_data(rendered_suite or "")
+            )
+
+        # 4. Execute validation using GreatExpectationsValidator
+        from data_quality.engine import GreatExpectationsValidator
+
+        suite_key = rendered_suite or "silver_market_ticks_suite"
+        validator = GreatExpectationsValidator(expectations_dir=self.data_context_root_dir)
+        val_result = validator.validate(
+            data=target_data,
+            suite=suite_key,
+            data_asset_name=self.data_asset_name,
+            data_docs_dir=self.data_docs_dir,
+        )
+
+        res_dict = val_result.to_dict()
+        GreatExpectationsValidationRegistry.record_validation(suite_key, res_dict)
+
+        if not val_result.success and self.fail_task_on_validation_failure:
+            failed_cnt = val_result.statistics["unsuccessful_expectations"]
+            pct = val_result.statistics["success_percent"]
+            raise AirflowException(
+                f"Great Expectations validation failed for suite '{suite_key}': "
+                f"{failed_cnt} expectations failed ({pct:.1f}% success)"
+            )
+
+        return res_dict if self.return_full_result else val_result.statistics
 
 
 class TaskGroup:

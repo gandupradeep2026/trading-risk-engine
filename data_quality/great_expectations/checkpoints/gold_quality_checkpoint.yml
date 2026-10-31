@@ -1,0 +1,34 @@
+# Gold Layer Data Quality Checkpoint
+name: gold_quality_checkpoint
+config_version: 1.0
+class_name: SimpleCheckpoint
+run_name_template: "%Y%m%d-%H%M%S-gold-quality-check"
+
+validations:
+  - batch_request:
+      datasource_name: delta_lake_gold
+      data_connector_name: gold_delta_connector
+      data_asset_name: gold_portfolio_var
+    expectation_suite_name: gold_portfolio_var_suite
+
+  - batch_request:
+      datasource_name: delta_lake_gold
+      data_connector_name: gold_delta_connector
+      data_asset_name: gold_risk_features
+    expectation_suite_name: gold_risk_features_suite
+
+action_list:
+  - name: store_validation_result
+    action:
+      class_name: StoreValidationResultAction
+
+  - name: store_evaluation_params
+    action:
+      class_name: StoreEvaluationParametersAction
+
+  - name: update_data_docs
+    action:
+      class_name: UpdateDataDocsAction
+      site_names:
+        - local_site
+        - gcs_site
