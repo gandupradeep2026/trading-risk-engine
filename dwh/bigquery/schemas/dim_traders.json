@@ -1,0 +1,56 @@
+[
+  {
+    "name": "trader_key",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Surrogate primary key for trading personnel"
+  },
+  {
+    "name": "trader_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Institutional trader identifier (e.g. TRADER_ALEX)"
+  },
+  {
+    "name": "trader_name",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Full legal name of trader"
+  },
+  {
+    "name": "desk",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Trading desk assignment"
+  },
+  {
+    "name": "role",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Operational role (SENIOR_TRADER, PORTFOLIO_MANAGER, QUANT_RESEARCHER, EXECUTION_ALGO)"
+  },
+  {
+    "name": "max_single_order_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Trader individual single order notional mandate limit in USD"
+  },
+  {
+    "name": "email",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Institutional corporate email address"
+  },
+  {
+    "name": "is_active",
+    "type": "BOOL",
+    "mode": "REQUIRED",
+    "description": "Operational trading authorization status"
+  },
+  {
+    "name": "created_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Audit creation timestamp in DWH"
+  }
+]

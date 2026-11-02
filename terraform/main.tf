@@ -153,5 +153,24 @@ module "databricks" {
   gcs_gold_bucket_url      = module.storage.gold_bucket_url
 }
 
+# -----------------------------------------------------------------------------
+# 8. BIGQUERY STAR-SCHEMA ENTERPRISE DATA WAREHOUSE MODULE
+# -----------------------------------------------------------------------------
+module "bigquery" {
+  source = "./modules/bigquery"
+
+  project_id                     = var.project_id
+  region                         = var.region
+  environment                    = var.environment
+  dataset_id                     = var.bigquery_dataset_id
+  dataset_name                   = var.bigquery_dataset_name
+  dataset_description            = var.bigquery_dataset_description
+  delete_contents_on_destroy     = var.bigquery_delete_contents_on_destroy
+  require_partition_filter       = var.bigquery_require_partition_filter
+  composer_service_account_email = module.composer.composer_service_account_email
+  dataflow_service_account_email = module.pubsub.dataflow_service_account_email
+}
+
+
 
 

@@ -1,0 +1,80 @@
+[
+  {
+    "name": "portfolio_key",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Surrogate primary key for trading portfolio book"
+  },
+  {
+    "name": "portfolio_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Unique institutional portfolio identifier (e.g. PORTFOLIO_ALPHA)"
+  },
+  {
+    "name": "portfolio_name",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Descriptive portfolio book name"
+  },
+  {
+    "name": "desk",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Trading desk ownership: EQUITY_DERIVATIVES, FX_SPOT, COMMODITIES_MACRO, CRYPTO_ARB"
+  },
+  {
+    "name": "portfolio_manager",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Lead portfolio manager name or identity"
+  },
+  {
+    "name": "risk_limit_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Maximum gross exposure risk limit in USD"
+  },
+  {
+    "name": "daily_loss_limit_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Stop-loss threshold limit for single trading day in USD"
+  },
+  {
+    "name": "max_var_limit_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Maximum allowable 99% 1-day Value-at-Risk in USD"
+  },
+  {
+    "name": "base_currency",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Base accounting currency (e.g. USD)"
+  },
+  {
+    "name": "strategy_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Quantitative investment strategy (STAT_ARB, TREND_FOLLOWING, MARKET_MAKING, MACRO_VALUE)"
+  },
+  {
+    "name": "is_active",
+    "type": "BOOL",
+    "mode": "REQUIRED",
+    "description": "Status flag indicating whether book is actively trading"
+  },
+  {
+    "name": "created_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Audit creation timestamp in DWH"
+  },
+  {
+    "name": "updated_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Audit update timestamp in DWH"
+  }
+]

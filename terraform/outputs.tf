@@ -212,3 +212,59 @@ output "databricks_gold_external_location_id" {
 
 
 
+
+# BigQuery Outputs
+output "bigquery_dataset_id" {
+  description = "The ID of the BigQuery analytical data warehouse dataset"
+  value       = module.bigquery.dataset_id
+}
+
+output "bigquery_dataset_name" {
+  description = "Friendly name of the BigQuery dataset"
+  value       = module.bigquery.dataset_name
+}
+
+output "bigquery_table_ids" {
+  description = "Map of logical table names to BigQuery table IDs"
+  value       = module.bigquery.table_ids
+}
+
+output "bigquery_fact_trade_orders_table_id" {
+  description = "BigQuery table ID for fact_trade_orders"
+  value       = module.bigquery.fact_trade_orders_table_id
+}
+
+output "bigquery_fact_market_ticks_table_id" {
+  description = "BigQuery table ID for fact_market_ticks"
+  value       = module.bigquery.fact_market_ticks_table_id
+}
+
+output "bigquery_fact_risk_stats_table_id" {
+  description = "BigQuery table ID for fact_risk_stats"
+  value       = module.bigquery.fact_risk_stats_table_id
+}
+
+output "bigquery_fact_risk_alerts_table_id" {
+  description = "BigQuery table ID for fact_risk_alerts"
+  value       = module.bigquery.fact_risk_alerts_table_id
+}
+
+output "bigquery_dim_tickers_table_id" {
+  description = "BigQuery table ID for dim_tickers"
+  value       = module.bigquery.dim_tickers_table_id
+}
+
+output "bigquery_dim_portfolios_table_id" {
+  description = "BigQuery table ID for dim_portfolios"
+  value       = module.bigquery.dim_portfolios_table_id
+}
+
+output "bigquery_dim_traders_table_id" {
+  description = "BigQuery table ID for dim_traders"
+  value       = module.bigquery.dim_traders_table_id
+}
+
+output "bigquery_dim_date_table_id" {
+  description = "BigQuery table ID for dim_date"
+  value       = module.bigquery.dim_date_table_id
+}

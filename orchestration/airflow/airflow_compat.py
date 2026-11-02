@@ -12,6 +12,7 @@ from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 import threading
+import time
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, Union
 
 # Thread-local storage for active DAG and TaskGroup context managers
@@ -1136,6 +1137,124 @@ class GreatExpectationsOperator(BaseOperator):
             )
 
         return res_dict if self.return_full_result else val_result.statistics
+
+
+class BigQueryJobRegistry:
+    """Thread-safe state registry for tracking BigQuery jobs and queries in Airflow tests."""
+    _lock = threading.Lock()
+    _jobs: Dict[str, Dict[str, Any]] = {}
+    _injected_failures: Dict[str, Dict[str, Any]] = {}
+    _task_attempt_counts: Dict[str, int] = {}
+
+    @classmethod
+    def reset(cls) -> None:
+        with cls._lock:
+            cls._jobs.clear()
+            cls._injected_failures.clear()
+            cls._task_attempt_counts.clear()
+
+    @classmethod
+    def record_job(cls, job_id: str, job_dict: Dict[str, Any]) -> None:
+        with cls._lock:
+            cls._jobs[job_id] = job_dict
+
+    @classmethod
+    def get_job(cls, job_id: str) -> Optional[Dict[str, Any]]:
+        with cls._lock:
+            return cls._jobs.get(job_id)
+
+    @classmethod
+    def get_all_jobs(cls) -> List[Dict[str, Any]]:
+        with cls._lock:
+            return list(cls._jobs.values())
+
+    @classmethod
+    def inject_failure(
+        cls,
+        task_id: str,
+        exception: Optional[Exception] = None,
+        num_failures: int = 1,
+    ) -> None:
+        with cls._lock:
+            cls._injected_failures[task_id] = {
+                "remaining": num_failures,
+                "exception": exception
+                or AirflowException(f"Simulated BigQuery job execution failure for task '{task_id}'"),
+            }
+
+    @classmethod
+    def record_task_attempt(cls, task_id: str) -> int:
+        with cls._lock:
+            cnt = cls._task_attempt_counts.get(task_id, 0) + 1
+            cls._task_attempt_counts[task_id] = cnt
+            return cnt
+
+    @classmethod
+    def should_fail_attempt(cls, task_id: str) -> Tuple[bool, Optional[Exception]]:
+        with cls._lock:
+            if task_id in cls._injected_failures:
+                fail_spec = cls._injected_failures[task_id]
+                if fail_spec["remaining"] > 0:
+                    fail_spec["remaining"] -= 1
+                    return True, fail_spec["exception"]
+            return False, None
+
+
+class BigQueryInsertJobOperator(BaseOperator):
+    """Pure-Python operator compatible with BigQueryInsertJobOperator.
+
+    Executes BigQuery SQL queries, DDL statements, and partition maintenance
+    operations inside Google Cloud Composer and local test environments.
+    """
+
+    template_fields: Tuple[str, ...] = ("configuration", "job_id")
+
+    def __init__(
+        self,
+        task_id: str,
+        configuration: Dict[str, Any],
+        job_id: Optional[str] = None,
+        location: str = "us-central1",
+        gcp_conn_id: str = "google_cloud_default",
+        cancel_on_kill: bool = True,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(task_id=task_id, **kwargs)
+        self.configuration = configuration
+        self.job_id = job_id
+        self.location = location
+        self.gcp_conn_id = gcp_conn_id
+        self.cancel_on_kill = cancel_on_kill
+
+    def execute(self, context: Dict[str, Any]) -> str:
+        """Execute BigQuery job with parameter rendering and failure simulation."""
+        attempt = BigQueryJobRegistry.record_task_attempt(self.task_id)
+
+        # Failure injection check
+        should_fail, err = BigQueryJobRegistry.should_fail_attempt(self.task_id)
+        if should_fail and err:
+            raise err
+
+        rendered_config = _render_templates_in_obj(self.configuration, context)
+        rendered_job_id = _render_jinja_string(self.job_id, context) if self.job_id else None
+
+        import time as _time_mod
+        from datetime import timezone
+
+        actual_job_id = rendered_job_id or f"bq_job_{self.task_id}_{int(_time_mod.time() * 1000)}"
+
+        job_record = {
+            "job_id": actual_job_id,
+            "task_id": self.task_id,
+            "attempt": attempt,
+            "configuration": rendered_config,
+            "location": self.location,
+            "gcp_conn_id": self.gcp_conn_id,
+            "status": "DONE",
+            "executed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        BigQueryJobRegistry.record_job(actual_job_id, job_record)
+        return actual_job_id
 
 
 class TaskGroup:

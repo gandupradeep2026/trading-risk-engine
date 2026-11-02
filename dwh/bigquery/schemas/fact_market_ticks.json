@@ -1,0 +1,110 @@
+[
+  {
+    "name": "tick_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Unique primary key for market tick fact record"
+  },
+  {
+    "name": "tick_date",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "Tick event calendar date - Partition key"
+  },
+  {
+    "name": "event_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "High-precision microsecond UTC timestamp of market print"
+  },
+  {
+    "name": "date_key",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Foreign key to dim_date (YYYYMMDD)"
+  },
+  {
+    "name": "ticker",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Instrument symbol - FK to dim_tickers, Clustering key"
+  },
+  {
+    "name": "asset_class",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Asset class (EQUITY, FX, COMMODITY, CRYPTO, ETF) - Clustering key"
+  },
+  {
+    "name": "bid_price",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Best prevailing bid price"
+  },
+  {
+    "name": "ask_price",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Best prevailing ask/offer price"
+  },
+  {
+    "name": "mid_price",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Mid-point price between bid and ask"
+  },
+  {
+    "name": "spread",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Absolute bid-ask spread (ask - bid)"
+  },
+  {
+    "name": "relative_spread_bps",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Relative spread expressed in basis points (spread / mid * 10000)"
+  },
+  {
+    "name": "last_price",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Last traded execution print price"
+  },
+  {
+    "name": "volume",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Last traded contract or share volume"
+  },
+  {
+    "name": "notional_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Print notional value in USD"
+  },
+  {
+    "name": "sequence_number",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Monotonically increasing feed sequence number"
+  },
+  {
+    "name": "is_crossed_quote",
+    "type": "BOOL",
+    "mode": "REQUIRED",
+    "description": "Validation flag indicating whether bid exceeds ask"
+  },
+  {
+    "name": "_raw_record_hash",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "SHA-256 lineage fingerprint from streaming ingestion tier"
+  },
+  {
+    "name": "_ingested_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Audit timestamp when record was loaded into BigQuery"
+  }
+]

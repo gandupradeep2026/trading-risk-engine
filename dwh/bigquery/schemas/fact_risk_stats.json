@@ -1,0 +1,146 @@
+[
+  {
+    "name": "risk_stat_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Unique primary key for risk analytics snapshot"
+  },
+  {
+    "name": "valuation_date",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "Risk valuation calendar date - Partition key"
+  },
+  {
+    "name": "valuation_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "UTC timestamp of risk calculation engine run"
+  },
+  {
+    "name": "date_key",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Foreign key to dim_date (YYYYMMDD)"
+  },
+  {
+    "name": "portfolio_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Trading portfolio book - FK to dim_portfolios, Clustering key"
+  },
+  {
+    "name": "risk_regime",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Assigned regime: LOW_RISK, MODERATE_RISK, ELEVATED_RISK, HIGH_RISK, CRITICAL_BREACH - Clustering key"
+  },
+  {
+    "name": "confidence_level",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Statistical confidence level (0.95 or 0.99) - Clustering key"
+  },
+  {
+    "name": "horizon_days",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Risk horizon holding period in days (typically 1)"
+  },
+  {
+    "name": "parametric_var_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Variance-covariance parametric Value-at-Risk in USD"
+  },
+  {
+    "name": "historical_var_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Historical simulation Value-at-Risk in USD"
+  },
+  {
+    "name": "monte_carlo_var_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Correlated Monte Carlo simulation Value-at-Risk in USD"
+  },
+  {
+    "name": "cvar_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Conditional Value-at-Risk (Expected Shortfall) in USD"
+  },
+  {
+    "name": "portfolio_limit_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Allocated portfolio risk limit in USD"
+  },
+  {
+    "name": "var_limit_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Maximum allowable VaR threshold in USD"
+  },
+  {
+    "name": "limit_utilization_pct",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Percentage utilization of risk limit (parametric_var / var_limit * 100)"
+  },
+  {
+    "name": "is_limit_breached",
+    "type": "BOOL",
+    "mode": "REQUIRED",
+    "description": "Indicator flag if any risk limit threshold was exceeded"
+  },
+  {
+    "name": "gross_exposure_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Sum of absolute market notional position values in USD"
+  },
+  {
+    "name": "net_exposure_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Directional net market delta exposure in USD"
+  },
+  {
+    "name": "unrealized_pnl_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Mark-to-market unrealized profit and loss in USD"
+  },
+  {
+    "name": "diversification_benefit_pct",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Percentage reduction in VaR due to cross-asset correlation offsets"
+  },
+  {
+    "name": "hhi_concentration",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Herfindahl-Hirschman Index measuring portfolio position concentration"
+  },
+  {
+    "name": "num_positions",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Number of open active trading positions in portfolio"
+  },
+  {
+    "name": "_source_batch_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Databricks Gold lakehouse execution batch identifier"
+  },
+  {
+    "name": "_calculated_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Audit timestamp when record was loaded into BigQuery"
+  }
+]

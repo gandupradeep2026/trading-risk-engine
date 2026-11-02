@@ -238,5 +238,37 @@ variable "databricks_catalog_name" {
   default     = "trading_risk"
 }
 
+# --- BigQuery Module Variables ---
+variable "bigquery_dataset_id" {
+  description = "BigQuery dataset identifier (defaults to trading_risk_dwh_<environment> if null)"
+  type        = string
+  default     = null
+}
+
+variable "bigquery_dataset_name" {
+  description = "Friendly display name for BigQuery analytical DWH"
+  type        = string
+  default     = "Trading Risk Enterprise Data Warehouse"
+}
+
+variable "bigquery_dataset_description" {
+  description = "Descriptive summary for BigQuery DWH dataset"
+  type        = string
+  default     = "Enterprise star schema analytical data warehouse for trading orders, market ticks, portfolio VaR, and risk analytics."
+}
+
+variable "bigquery_delete_contents_on_destroy" {
+  description = "Allow deletion of tables upon BigQuery dataset destruction"
+  type        = bool
+  default     = true
+}
+
+variable "bigquery_require_partition_filter" {
+  description = "Enforce partition filtering in queries against fact tables"
+  type        = bool
+  default     = true
+}
+
+
 
 

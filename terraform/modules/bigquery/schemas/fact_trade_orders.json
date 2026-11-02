@@ -1,0 +1,128 @@
+[
+  {
+    "name": "trade_order_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Unique primary key for trade order fact record"
+  },
+  {
+    "name": "order_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Original business order ID from execution engine"
+  },
+  {
+    "name": "trade_date",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "Trade execution calendar date - Partition key"
+  },
+  {
+    "name": "execution_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "UTC timestamp of execution print"
+  },
+  {
+    "name": "date_key",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Foreign key to dim_date (YYYYMMDD)"
+  },
+  {
+    "name": "ticker",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Instrument symbol - FK to dim_tickers, Clustering key"
+  },
+  {
+    "name": "portfolio_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Trading portfolio book - FK to dim_portfolios, Clustering key"
+  },
+  {
+    "name": "trader_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Executing trader - FK to dim_traders, Clustering key"
+  },
+  {
+    "name": "asset_class",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Asset class (EQUITY, FX, COMMODITY, CRYPTO, ETF)"
+  },
+  {
+    "name": "side",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Order transaction side: BUY or SELL"
+  },
+  {
+    "name": "order_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Order execution type: MARKET, LIMIT, STOP_LOSS, STOP_LIMIT"
+  },
+  {
+    "name": "execution_status",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Execution status: FILLED, PARTIALLY_FILLED, CANCELLED, REJECTED - Clustering key"
+  },
+  {
+    "name": "quantity",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Executed transaction volume/shares"
+  },
+  {
+    "name": "price",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Execution unit price"
+  },
+  {
+    "name": "notional_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Total gross notional exposure in USD"
+  },
+  {
+    "name": "fee_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Exchange and broker execution fee in USD"
+  },
+  {
+    "name": "slippage_bps",
+    "type": "NUMERIC",
+    "mode": "NULLABLE",
+    "description": "Execution slippage against arrival price in basis points"
+  },
+  {
+    "name": "is_aggressive",
+    "type": "BOOL",
+    "mode": "REQUIRED",
+    "description": "Taker flag indicating liquidity removing execution"
+  },
+  {
+    "name": "sequence_number",
+    "type": "INT64",
+    "mode": "NULLABLE",
+    "description": "Monotonic order sequence number"
+  },
+  {
+    "name": "_cleansed_record_hash",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "SHA-256 lineage hash from Lakehouse Silver tier"
+  },
+  {
+    "name": "_ingested_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Audit timestamp when record was loaded into BigQuery"
+  }
+]

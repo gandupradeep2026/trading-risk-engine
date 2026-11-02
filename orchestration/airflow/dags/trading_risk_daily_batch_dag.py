@@ -31,6 +31,9 @@ try:
         DataprocDeleteClusterOperator,
         DataprocSubmitJobOperator,
     )
+    from airflow.providers.google.cloud.operators.bigquery import (  # type: ignore
+        BigQueryInsertJobOperator,
+    )
     from airflow.utils.task_group import TaskGroup  # type: ignore
     from airflow.utils.trigger_rule import TriggerRule  # type: ignore
     from great_expectations_provider.operators.great_expectations import (  # type: ignore
@@ -39,6 +42,7 @@ try:
 except (ImportError, ModuleNotFoundError):
     from orchestration.airflow.airflow_compat import (
         DAG,
+        BigQueryInsertJobOperator,
         DatabricksRunNowOperator,
         DatabricksSubmitRunOperator,
         DataprocCreateClusterOperator,
@@ -285,9 +289,28 @@ def build_trading_risk_dag(
         # TaskGroup: BigQuery Enterprise Data Warehouse & dbt (Days 22-24)
         # ---------------------------------------------------------------------
         with TaskGroup("bigquery_dwh_publication", tooltip="BigQuery partitioned tables & dbt models") as dwh_group:
-            refresh_bigquery = EmptyOperator(
+            refresh_bigquery = BigQueryInsertJobOperator(
                 task_id="refresh_bigquery_partitions",
-                doc_md="Loads and refreshes partitioned, clustered BigQuery risk tables.",
+                configuration={
+                    "query": {
+                        "query": (
+                            f"MERGE `{cfg.gcp_project_id}.trading_risk_dwh_{cfg.environment}.fact_risk_stats` T "
+                            f"USING `{cfg.gcp_project_id}.trading_risk_dwh_{cfg.environment}.stg_daily_risk_stats` S "
+                            "ON T.risk_stat_id = S.risk_stat_id AND T.valuation_date = '{{ ds }}' "
+                            "WHEN MATCHED THEN UPDATE SET limit_utilization_pct = S.limit_utilization_pct "
+                            "WHEN NOT MATCHED THEN INSERT ROW;"
+                        ),
+                        "useLegacySql": False,
+                    }
+                },
+                location=cfg.gcp_region,
+                retries=3,
+                retry_delay=timedelta(seconds=60),
+                retry_exponential_backoff=True,
+                max_retry_delay=timedelta(seconds=300),
+                on_retry_callback=create_retry_callback(),
+                on_failure_callback=create_failure_callback(),
+                doc_md="Refreshes partitioned, clustered BigQuery risk tables with latest valuation snapshots.",
             )
             run_dbt = EmptyOperator(
                 task_id="run_dbt_transforms",

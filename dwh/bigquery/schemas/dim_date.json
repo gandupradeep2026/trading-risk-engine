@@ -1,0 +1,92 @@
+[
+  {
+    "name": "date_key",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Surrogate primary key formatted as YYYYMMDD integer"
+  },
+  {
+    "name": "calendar_date",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "Calendar date (YYYY-MM-DD)"
+  },
+  {
+    "name": "year",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Calendar year (e.g. 2026)"
+  },
+  {
+    "name": "quarter",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Calendar quarter (1 to 4)"
+  },
+  {
+    "name": "month",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Calendar month number (1 to 12)"
+  },
+  {
+    "name": "month_name",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Full name of the calendar month (e.g. November)"
+  },
+  {
+    "name": "day_of_month",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Day of month (1 to 31)"
+  },
+  {
+    "name": "day_of_week",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Day of week (1=Monday .. 7=Sunday)"
+  },
+  {
+    "name": "day_name",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Day name (e.g. Monday)"
+  },
+  {
+    "name": "week_of_year",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "ISO week number (1 to 53)"
+  },
+  {
+    "name": "is_weekend",
+    "type": "BOOL",
+    "mode": "REQUIRED",
+    "description": "Flag indicating Saturday or Sunday"
+  },
+  {
+    "name": "is_trading_day",
+    "type": "BOOL",
+    "mode": "REQUIRED",
+    "description": "Flag indicating active market trading session"
+  },
+  {
+    "name": "is_us_holiday",
+    "type": "BOOL",
+    "mode": "REQUIRED",
+    "description": "Flag indicating US Federal or exchange holiday"
+  },
+  {
+    "name": "fiscal_year",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Corporate fiscal accounting year"
+  },
+  {
+    "name": "fiscal_quarter",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Corporate fiscal accounting quarter"
+  }
+]

@@ -1,0 +1,4 @@
+# Trading Risk Engine: Data Warehouse (DWH) Requirements (Day 22)
+duckdb>=1.0.0
+pyarrow>=14.0.0
+pydantic>=2.0.0

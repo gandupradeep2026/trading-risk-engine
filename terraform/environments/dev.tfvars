@@ -52,3 +52,9 @@ databricks_catalog_name             = "trading_risk"
 
 
 
+
+# BigQuery Enterprise DWH (Dev profile)
+bigquery_dataset_id                 = "trading_risk_dwh_dev"
+bigquery_dataset_name               = "Trading Risk DWH (Development)"
+bigquery_delete_contents_on_destroy = true
+bigquery_require_partition_filter   = true

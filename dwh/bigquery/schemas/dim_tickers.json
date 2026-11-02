@@ -1,0 +1,92 @@
+[
+  {
+    "name": "ticker_key",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Surrogate primary key for financial instrument (e.g. EQUITY#AAPL)"
+  },
+  {
+    "name": "ticker",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Financial instrument symbol or ticker (e.g. AAPL, EURUSD, BTCUSD)"
+  },
+  {
+    "name": "ticker_name",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Descriptive legal name of financial instrument or asset"
+  },
+  {
+    "name": "asset_class",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Asset class classification: EQUITY, FX, COMMODITY, CRYPTO, ETF"
+  },
+  {
+    "name": "exchange",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Primary trading exchange or venue (e.g. NASDAQ, NYSE, CME, BINANCE, FOREX)"
+  },
+  {
+    "name": "currency",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Trading quoting currency (e.g. USD, EUR, GBP)"
+  },
+  {
+    "name": "sector",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Macro industry sector (e.g. Technology, Financials, Energy)"
+  },
+  {
+    "name": "industry",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Sub-industry classification (e.g. Consumer Electronics, Investment Banking)"
+  },
+  {
+    "name": "lot_size",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Minimum trade lot contract size"
+  },
+  {
+    "name": "tick_size",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Minimum price fluctuation increment"
+  },
+  {
+    "name": "is_active",
+    "type": "BOOL",
+    "mode": "REQUIRED",
+    "description": "Flag indicating if instrument is currently active for trading"
+  },
+  {
+    "name": "valid_from",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "SCD Type 2 validity start timestamp"
+  },
+  {
+    "name": "valid_to",
+    "type": "TIMESTAMP",
+    "mode": "NULLABLE",
+    "description": "SCD Type 2 validity end timestamp (NULL if current)"
+  },
+  {
+    "name": "created_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Audit timestamp when record was created in DWH"
+  },
+  {
+    "name": "updated_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Audit timestamp when record was last updated in DWH"
+  }
+]
