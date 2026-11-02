@@ -12,6 +12,9 @@ from orchestration.airflow.airflow_compat import (
     GreatExpectationsValidationRegistry,
     BigQueryInsertJobOperator,
     BigQueryJobRegistry,
+    DbtExecutionRegistry,
+    DbtRunOperator,
+    DbtTestOperator,
     TriggerRule,
 )
 from orchestration.airflow.config.airflow_config import AirflowEnvironmentConfig
@@ -76,4 +79,8 @@ __all__ = [
     # BigQuery DWH Orchestration
     "BigQueryInsertJobOperator",
     "BigQueryJobRegistry",
+    # dbt Orchestration
+    "DbtExecutionRegistry",
+    "DbtRunOperator",
+    "DbtTestOperator",
 ]

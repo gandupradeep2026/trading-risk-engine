@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 23
+- **Current Milestone Target**: Day 24
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 - **Execution Constraint (since 2026-10-31)**: GCP free trial has ended and the account will NOT be upgraded to paid. All remaining milestones MUST be implemented and verified 100% locally at zero cost: no `gcloud`/`terraform apply`, no real GCP API calls, no credentials. Use local substitutes (DuckDB / `dbt-duckdb` for BigQuery, SQLite for Cloud SQL, local filesystem for GCS, existing in-memory mocks for Pub/Sub/Kafka/Dataproc/Databricks/Airflow). Terraform/SQL for GCP is still authored as deployable code but validated only via static tests.
@@ -32,7 +32,7 @@
 - [x] **Day 20**: Airflow DAG orchestrating Databricks Gold pipelines with automated retry logic.
 - [x] **Day 21**: Great Expectations data quality test suites integrated into the Airflow DAG pipeline.
 - [x] **Day 22**: BigQuery DDL: partitioned and clustered star-schema tables for trades, tickers, and risk stats.
-- [ ] **Day 23**: dbt project initialization with staging and intermediate SQL models for BigQuery.
+- [x] **Day 23**: dbt project initialization with staging and intermediate SQL models for BigQuery.
 - [ ] **Day 24**: dbt mart models and BigQuery materialized views for real-time market performance analytics.
 - [ ] **Day 25**: Cloud SQL to BigQuery replication setup via BigQuery external/federated queries.
 - [ ] **Day 26**: Performance benchmarking documentation and BigQuery cost optimization runbook.
@@ -611,6 +611,46 @@
   - Authored comprehensive zero-cost test suite in `tests/test_bigquery_star_schema.py`:
     - 30 new unit and integration tests verifying Terraform HCL syntax, balanced braces, root wiring, fact table partitioning and clustering constraints, JSON schema and DDL parity, Pydantic validation rules, DuckDB table initialization, dimension seeding, synthetic fact insertions, partition filter enforcement raising on missing filter and passing on valid filter, star-schema analytical joins (turnover by asset class, desk, and role; risk headroom vs limit), PyArrow table execution, Airflow operator execution with Jinja rendering and quota failure recovery, and CLI runner execution.
 - **Verification Status**: 580/580 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 23 - 2026-11-03
+- **Milestone Completed**: dbt project initialization with staging and intermediate SQL models for BigQuery.
+- **Key Changes Implemented**:
+  - Initialized production dbt Core project structure under `dwh/dbt/`:
+    - `dbt_project.yml`: Configured project manifest (`trading_risk_dbt`, v1.0.0, profile `trading_risk`, materializations, custom schemas, and environment variables).
+    - `profiles.yml`: Defined profiles for BigQuery (`dev`, `prod`) and zero-cost local DuckDB emulator (`duckdb`).
+    - `packages.yml`: Configured `dbt-labs/dbt_utils` (v1.2.0).
+    - Authored project architecture documentation and Mermaid data lineage diagram in `dwh/dbt/README.md`.
+  - Authored dbt macros (`dwh/dbt/macros/`):
+    - `generate_surrogate_key.sql`: Pure GoogleSQL/DuckDB deterministic MD5 surrogate key generator.
+    - `financial_conversions.sql`: Reusable macros for calculating notional USD, relative spread in basis points, notional tier classification (`MICRO`, `STANDARD`, `LARGE`, `BLOCK`), and limit breach severity.
+    - `get_custom_schema.sql`: Standard dbt custom schema resolution.
+  - Declared BigQuery star-schema sources & tests in `dwh/dbt/models/staging/sources.yml`:
+    - Sources for 8 tables (`fact_trade_orders`, `fact_market_ticks`, `fact_risk_stats`, `fact_risk_alerts`, `dim_tickers`, `dim_portfolios`, `dim_traders`, `dim_date`) with schema descriptions and column-level tests.
+  - Built 7 production staging models (`dwh/dbt/models/staging/`):
+    - `stg_trade_orders`: Extracts executed trade orders, derives deterministic MD5 `trade_order_key`, exact notional USD, execution flags (`is_filled`, `is_buy`, `is_sell`), and filters invalid prints.
+    - `stg_market_ticks`: Standardizes tick stream prints, extracts bid/ask/last prices, derives absolute spread, mid price, relative spread in bps, `market_tick_key`, and non-crossed quote flag.
+    - `stg_risk_stats`: Standardizes portfolio VaR (parametric, historical, Monte Carlo) and CVaR / Expected Shortfall, calculates risk headroom USD and tail risk ratio.
+    - `stg_risk_alerts`: Standardizes operational anomaly records, metric names, threshold vs observed values, and critical severity flags.
+    - `stg_tickers`, `stg_portfolios`, `stg_traders`: Dimensional staging views cleaning business keys, desks, lot sizes, single-order limits, and active status.
+    - `staging/schema.yml`: Declared documentation and column-level tests (`unique`, `not_null`, `accepted_values`).
+  - Built 4 production intermediate models (`dwh/dbt/models/intermediate/`):
+    - `int_orders_enriched`: Denormalizes trade orders with ticker, portfolio, and trader dimensions; computes signed notional USD, notional tiers, aggressive taker flag, trader single-order limit comparisons, and trader intra-day order rank via window functions.
+    - `int_portfolio_hourly_exposure`: Rolls up orders hourly by portfolio and desk; derives gross turnover, net directional exposure, average trade size, order flow imbalance, and aggressive trade ratios.
+    - `int_market_microstructure_hourly`: Rolls up high-frequency ticks hourly per instrument; computes OHLC prices, exact hourly VWAP, total contract volume, average/max spread in bps, and price range in basis points.
+    - `int_risk_limit_breaches`: Evaluates portfolio risk headroom, tail risk ratios, limit breach severity (`NORMAL`, `WARNING`, `CRITICAL`), and correlated operational alerts.
+    - `intermediate/schema.yml`: Declared documentation and tests for intermediate layers.
+  - Implemented zero-cost Python dbt execution engine and CLI runner (`dwh/dbt/`):
+    - `DbtConfig`: Strongly-typed configuration model with environment variable resolution.
+    - `DbtProjectManager`: Discovers all models and macros, analyzes `ref` and `source` dependencies, validates DAG acyclicity using Kahn's topological sort algorithm, and compiles Jinja tags into executable GoogleSQL/DuckDB relations.
+    - `DbtRunner`: Executes models against `LocalBigQueryEmulator` (DuckDB), evaluates 84 schema tests (`unique`, `not_null`, `accepted_values`, `relationships`), supports Arrow table conversion (`fetch_arrow_table`), and formats operational Prometheus metrics (`dbt_models_executed_total`, `dbt_tests_passed_total`, etc.).
+    - `dwh/dbt/cli.py`: Production CLI runner supporting `--compile-only`, `--seed`, `--run-tests`, `--json-report`, and `--export-prometheus`.
+  - Integrated dbt with Cloud Composer Airflow master DAG:
+    - Added `DbtExecutionRegistry`, `DbtRunOperator`, and `DbtTestOperator` to `orchestration/airflow/airflow_compat.py`.
+    - Upgraded master Lakehouse DAG (`orchestration/airflow/dags/trading_risk_daily_batch_dag.py`): replaced placeholder EmptyOperator with `DbtRunOperator(task_id="run_dbt_transforms")` and `DbtTestOperator(task_id="test_dbt_models")` downstream of BigQuery partition refresh and upstream of risk reporting.
+    - Exported symbols in `dwh/__init__.py`, `dwh/dbt/__init__.py`, and `orchestration/airflow/__init__.py`.
+  - Comprehensive zero-cost test suite in `tests/test_dbt_staging_and_intermediate.py`:
+    - 34 unit and integration tests verifying dbt project manifests, model and macro syntax, DAG acyclicity and topological ordering, cycle rejection, compilation, hermetic DuckDB execution with seed data, analytical metrics accuracy (signed notional, notional tiers, hourly VWAP, order flow imbalance, risk headroom), schema test evaluation (100% pass rate on clean data, failure detection on corrupted data), Prometheus metrics formatting, Airflow operator execution and retries, master DAG topological acyclicity, and CLI runner execution.
+- **Verification Status**: 614/614 tests passed cleanly (`python -m pytest tests/ -v`).
 
 
 

@@ -1,0 +1,45 @@
+name: 'trading_risk_dbt'
+version: '1.0.0'
+config-version: 2
+
+# Project Profile Configuration
+profile: 'trading_risk'
+
+# Directory Paths
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Global Variables
+vars:
+  gcp_project_id: 'trading-risk-dev-001'
+  dataset_id: 'trading_risk_dwh_dev'
+  environment: 'dev'
+
+# Model Materialization & Partitioning Configurations
+models:
+  trading_risk_dbt:
+    staging:
+      +materialized: view
+      +schema: staging
+      +tags:
+        - 'staging'
+        - 'finance'
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+      +tags:
+        - 'intermediate'
+        - 'risk'
+    marts:
+      +materialized: table
+      +schema: marts
+      +tags:
+        - 'marts'
+        - 'analytics'

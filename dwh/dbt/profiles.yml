@@ -1,0 +1,27 @@
+trading_risk:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT_ID', 'trading-risk-dev-001') }}"
+      dataset: "{{ env_var('BIGQUERY_DATASET', 'trading_risk_dwh_dev') }}"
+      threads: 4
+      timeout_seconds: 300
+      location: us-central1
+      priority: interactive
+    prod:
+      type: bigquery
+      method: service-account
+      project: "{{ env_var('GCP_PROJECT_ID', 'trading-risk-prod-001') }}"
+      dataset: "{{ env_var('BIGQUERY_DATASET', 'trading_risk_dwh_prod') }}"
+      threads: 8
+      timeout_seconds: 600
+      location: us-central1
+      priority: interactive
+      keyfile: "{{ env_var('GCP_KEYFILE', '/etc/gcp/sa-composer.json') }}"
+    duckdb:
+      type: duckdb
+      path: ":memory:"
+      threads: 4
+      schema: trading_risk_dwh_dev

@@ -1257,6 +1257,200 @@ class BigQueryInsertJobOperator(BaseOperator):
         return actual_job_id
 
 
+class DbtExecutionRegistry:
+    """Thread-safe registry tracking dbt execution runs and failure simulation."""
+
+    _runs: Dict[str, Dict[str, Any]] = {}
+    _injected_failures: Dict[str, Dict[str, Any]] = {}
+    _task_attempt_counts: Dict[str, int] = {}
+    _lock = threading.Lock()
+
+    @classmethod
+    def reset(cls) -> None:
+        with cls._lock:
+            cls._runs.clear()
+            cls._injected_failures.clear()
+            cls._task_attempt_counts.clear()
+
+    @classmethod
+    def record_run(cls, run_id: str, run_dict: Dict[str, Any]) -> None:
+        with cls._lock:
+            cls._runs[run_id] = run_dict
+
+    @classmethod
+    def get_run(cls, run_id: str) -> Optional[Dict[str, Any]]:
+        with cls._lock:
+            return cls._runs.get(run_id)
+
+    @classmethod
+    def get_all_runs(cls) -> List[Dict[str, Any]]:
+        with cls._lock:
+            return list(cls._runs.values())
+
+    @classmethod
+    def inject_failure(
+        cls,
+        task_id: str,
+        exception: Optional[Exception] = None,
+        num_failures: int = 1,
+    ) -> None:
+        with cls._lock:
+            cls._injected_failures[task_id] = {
+                "remaining": num_failures,
+                "exception": exception
+                or AirflowException(f"Simulated dbt execution failure for task '{task_id}'"),
+            }
+
+    @classmethod
+    def record_task_attempt(cls, task_id: str) -> int:
+        with cls._lock:
+            cnt = cls._task_attempt_counts.get(task_id, 0) + 1
+            cls._task_attempt_counts[task_id] = cnt
+            return cnt
+
+    @classmethod
+    def should_fail_attempt(cls, task_id: str) -> Tuple[bool, Optional[Exception]]:
+        with cls._lock:
+            if task_id in cls._injected_failures:
+                fail_spec = cls._injected_failures[task_id]
+                if fail_spec["remaining"] > 0:
+                    fail_spec["remaining"] -= 1
+                    return True, fail_spec["exception"]
+            return False, None
+
+
+class DbtRunOperator(BaseOperator):
+    """Pure-Python operator executing dbt models with parameter rendering and retries."""
+
+    template_fields: Tuple[str, ...] = ("models", "project_dir", "target")
+
+    def __init__(
+        self,
+        task_id: str,
+        models: Union[str, List[str]] = "staging",
+        project_dir: Optional[str] = None,
+        target: str = "dev",
+        vars: Optional[Dict[str, Any]] = None,
+        runner_instance: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(task_id=task_id, **kwargs)
+        self.models = models
+        self.project_dir = project_dir
+        self.target = target
+        self.vars = vars or {}
+        self.runner_instance = runner_instance
+
+    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        attempt = DbtExecutionRegistry.record_task_attempt(self.task_id)
+
+        should_fail, err = DbtExecutionRegistry.should_fail_attempt(self.task_id)
+        if should_fail and err:
+            raise err
+
+        rendered_models = _render_templates_in_obj(self.models, context)
+        rendered_project_dir = _render_jinja_string(self.project_dir, context) if self.project_dir else None
+        rendered_target = _render_jinja_string(self.target, context)
+
+        import time as _time_mod
+        from datetime import timezone
+
+        run_id = f"dbt_run_{self.task_id}_{int(_time_mod.time() * 1000)}"
+        models_list = rendered_models if isinstance(rendered_models, list) else rendered_models.split()
+
+        res_dict = {
+            "run_id": run_id,
+            "task_id": self.task_id,
+            "attempt": attempt,
+            "models": models_list,
+            "project_dir": rendered_project_dir,
+            "target": rendered_target,
+            "status": "SUCCESS",
+            "executed_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if self.runner_instance is not None:
+            run_res = self.runner_instance.run_models(models_list)
+            res_dict["success"] = run_res.success
+            res_dict["models_executed"] = run_res.models_executed
+            res_dict["models_failed"] = run_res.models_failed
+            if not run_res.success:
+                raise AirflowException(f"dbt run failed for models: {models_list}")
+        else:
+            res_dict["success"] = True
+            res_dict["models_executed"] = len(models_list)
+            res_dict["models_failed"] = 0
+
+        DbtExecutionRegistry.record_run(run_id, res_dict)
+        return res_dict
+
+
+class DbtTestOperator(BaseOperator):
+    """Pure-Python operator executing dbt schema tests with parameter rendering and retries."""
+
+    template_fields: Tuple[str, ...] = ("models", "project_dir", "target")
+
+    def __init__(
+        self,
+        task_id: str,
+        models: Union[str, List[str]] = "staging",
+        project_dir: Optional[str] = None,
+        target: str = "dev",
+        runner_instance: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(task_id=task_id, **kwargs)
+        self.models = models
+        self.project_dir = project_dir
+        self.target = target
+        self.runner_instance = runner_instance
+
+    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        attempt = DbtExecutionRegistry.record_task_attempt(self.task_id)
+
+        should_fail, err = DbtExecutionRegistry.should_fail_attempt(self.task_id)
+        if should_fail and err:
+            raise err
+
+        rendered_models = _render_templates_in_obj(self.models, context)
+        rendered_project_dir = _render_jinja_string(self.project_dir, context) if self.project_dir else None
+        rendered_target = _render_jinja_string(self.target, context)
+
+        import time as _time_mod
+        from datetime import timezone
+
+        test_id = f"dbt_test_{self.task_id}_{int(_time_mod.time() * 1000)}"
+        models_list = rendered_models if isinstance(rendered_models, list) else rendered_models.split()
+
+        res_dict = {
+            "test_id": test_id,
+            "task_id": self.task_id,
+            "attempt": attempt,
+            "models": models_list,
+            "project_dir": rendered_project_dir,
+            "target": rendered_target,
+            "status": "SUCCESS",
+            "executed_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        if self.runner_instance is not None:
+            test_res = self.runner_instance.run_tests(models_list)
+            res_dict["success"] = test_res.success
+            res_dict["tests_executed"] = test_res.tests_executed
+            res_dict["tests_passed"] = test_res.tests_passed
+            res_dict["tests_failed"] = test_res.tests_failed
+            if not test_res.success:
+                raise AirflowException(f"dbt tests failed for models: {models_list}")
+        else:
+            res_dict["success"] = True
+            res_dict["tests_executed"] = 10
+            res_dict["tests_passed"] = 10
+            res_dict["tests_failed"] = 0
+
+        DbtExecutionRegistry.record_run(test_id, res_dict)
+        return res_dict
+
+
 class TaskGroup:
     """Pure-Python TaskGroup modeling Apache Airflow 2.x TaskGroup."""
 

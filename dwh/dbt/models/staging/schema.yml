@@ -1,0 +1,192 @@
+version: 2
+
+models:
+  - name: stg_trade_orders
+    description: "Standardized trade order executions enriched with surrogate key, calculated notional, and domain flags."
+    columns:
+      - name: trade_order_key
+        description: "Deterministic MD5 surrogate key generated from order_id."
+        tests:
+          - not_null
+          - unique
+      - name: order_id
+        description: "Source order identifier."
+        tests:
+          - not_null
+      - name: portfolio_id
+        description: "Portfolio book identifier."
+        tests:
+          - not_null
+      - name: ticker
+        description: "Financial instrument ticker symbol."
+        tests:
+          - not_null
+      - name: trader_id
+        description: "Executing trader identifier."
+        tests:
+          - not_null
+      - name: side
+        description: "Order side: BUY or SELL."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['BUY', 'SELL']
+      - name: order_type
+        description: "Order execution type."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['MARKET', 'LIMIT', 'STOP_LOSS', 'STOP_LIMIT']
+      - name: execution_status
+        description: "Execution fill status."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['FILLED', 'PARTIALLY_FILLED', 'CANCELLED', 'CANCELED', 'REJECTED']
+      - name: notional_usd
+        description: "Exact notional USD calculated as order_price * quantity."
+        tests:
+          - not_null
+
+  - name: stg_market_ticks
+    description: "Standardized market tick stream records with mid-price, spread, and relative spread in bps."
+    columns:
+      - name: market_tick_key
+        description: "Deterministic MD5 surrogate key."
+        tests:
+          - not_null
+      - name: ticker
+        description: "Instrument ticker symbol."
+        tests:
+          - not_null
+      - name: asset_class
+        description: "Asset class classification."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['EQUITY', 'FX', 'COMMODITY', 'CRYPTO', 'ETF']
+      - name: last_price
+        description: "Latest executed trade print price."
+        tests:
+          - not_null
+      - name: spread
+        description: "Absolute bid-ask spread."
+        tests:
+          - not_null
+      - name: relative_spread_bps
+        description: "Bid-ask spread expressed in basis points relative to mid price."
+        tests:
+          - not_null
+
+  - name: stg_risk_stats
+    description: "Standardized daily portfolio Value-at-Risk, Expected Shortfall, and exposure statistics."
+    columns:
+      - name: risk_stat_key
+        description: "Deterministic surrogate key."
+        tests:
+          - not_null
+          - unique
+      - name: portfolio_id
+        description: "Portfolio identifier."
+        tests:
+          - not_null
+      - name: confidence_level
+        description: "Statistical confidence interval (0.95 or 0.99)."
+        tests:
+          - not_null
+      - name: parametric_var
+        description: "Variance-Covariance Value-at-Risk in USD."
+        tests:
+          - not_null
+      - name: cvar_expected_shortfall
+        description: "Conditional Value-at-Risk / Expected Shortfall."
+        tests:
+          - not_null
+      - name: limit_utilization_pct
+        description: "Percentage of portfolio VaR limit consumed."
+        tests:
+          - not_null
+      - name: risk_regime
+        description: "Categorical risk level."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['LOW_RISK', 'MODERATE_RISK', 'ELEVATED_RISK', 'HIGH_RISK', 'CRITICAL_BREACH']
+
+  - name: stg_risk_alerts
+    description: "Standardized operational risk alerts and market anomalies."
+    columns:
+      - name: risk_alert_key
+        description: "Deterministic surrogate key."
+        tests:
+          - not_null
+          - unique
+      - name: alert_id
+        description: "Source alert UUID."
+        tests:
+          - not_null
+      - name: portfolio_id
+        description: "Associated portfolio identifier."
+        tests:
+          - not_null
+      - name: severity
+        description: "Severity level classification."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['INFO', 'WARNING', 'CRITICAL']
+      - name: alert_type
+        description: "Type of risk anomaly."
+        tests:
+          - not_null
+
+  - name: stg_tickers
+    description: "Standardized instrument dimension attributes."
+    columns:
+      - name: ticker
+        description: "Instrument ticker symbol."
+        tests:
+          - not_null
+          - unique
+      - name: asset_class
+        description: "Asset class."
+        tests:
+          - not_null
+      - name: currency
+        description: "Quoting currency."
+        tests:
+          - not_null
+
+  - name: stg_portfolios
+    description: "Standardized portfolio dimension attributes."
+    columns:
+      - name: portfolio_id
+        description: "Portfolio identifier."
+        tests:
+          - not_null
+          - unique
+      - name: desk
+        description: "Trading desk identifier."
+        tests:
+          - not_null
+      - name: max_var_limit_usd
+        description: "Authorized daily VaR limit in USD."
+        tests:
+          - not_null
+
+  - name: stg_traders
+    description: "Standardized trader personnel dimension attributes."
+    columns:
+      - name: trader_id
+        description: "Trader identifier."
+        tests:
+          - not_null
+          - unique
+      - name: desk
+        description: "Assigned trading desk."
+        tests:
+          - not_null
+      - name: single_order_limit_usd
+        description: "Maximum single order notional authority."
+        tests:
+          - not_null

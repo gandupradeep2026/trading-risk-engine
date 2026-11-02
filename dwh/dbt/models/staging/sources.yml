@@ -1,0 +1,122 @@
+version: 2
+
+sources:
+  - name: trading_risk
+    database: "{{ var('gcp_project_id', 'trading-risk-dev-001') }}"
+    schema: "{{ var('dataset_id', 'trading_risk_dwh_dev') }}"
+    description: "BigQuery Enterprise Data Warehouse star-schema raw and partitioned source tables."
+    tables:
+      - name: fact_trade_orders
+        description: "Partitioned and clustered fact table of order executions and fills."
+        columns:
+          - name: order_id
+            description: "Primary key UUID of the trade order."
+            tests:
+              - not_null
+              - unique
+          - name: portfolio_id
+            description: "Portfolio book identifier."
+            tests:
+              - not_null
+          - name: ticker
+            description: "Financial instrument ticker symbol."
+            tests:
+              - not_null
+          - name: side
+            description: "Order side: BUY or SELL."
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['BUY', 'SELL']
+          - name: price
+            description: "Execution unit price in USD."
+            tests:
+              - not_null
+          - name: quantity
+            description: "Executed unit volume."
+            tests:
+              - not_null
+
+      - name: fact_market_ticks
+        description: "Granular market data tick stream prints."
+        columns:
+          - name: ticker
+            description: "Instrument ticker symbol."
+            tests:
+              - not_null
+          - name: asset_class
+            description: "Asset class category."
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['EQUITY', 'FX', 'COMMODITY', 'CRYPTO', 'ETF']
+          - name: last_price
+            description: "Last executed print price."
+            tests:
+              - not_null
+
+      - name: fact_risk_stats
+        description: "Daily Value-at-Risk, Expected Shortfall, and portfolio exposure snapshots."
+        columns:
+          - name: risk_stat_id
+            description: "Primary key identifier of the risk valuation record."
+            tests:
+              - not_null
+              - unique
+          - name: portfolio_id
+            description: "Portfolio book identifier."
+            tests:
+              - not_null
+          - name: risk_regime
+            description: "Risk regime category classification."
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['LOW_RISK', 'MODERATE_RISK', 'ELEVATED_RISK', 'HIGH_RISK', 'CRITICAL_BREACH']
+
+      - name: fact_risk_alerts
+        description: "Operational real-time risk alerts and limit breach notifications."
+        columns:
+          - name: alert_id
+            description: "Unique alert identifier."
+            tests:
+              - not_null
+              - unique
+          - name: severity
+            description: "Alert severity level."
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ['INFO', 'WARNING', 'CRITICAL']
+
+      - name: dim_tickers
+        description: "Instrument dimension table."
+        columns:
+          - name: ticker
+            tests:
+              - not_null
+              - unique
+
+      - name: dim_portfolios
+        description: "Portfolio dimension table."
+        columns:
+          - name: portfolio_id
+            tests:
+              - not_null
+              - unique
+
+      - name: dim_traders
+        description: "Trader dimension table."
+        columns:
+          - name: trader_id
+            tests:
+              - not_null
+              - unique
+
+      - name: dim_date
+        description: "Date dimension calendar table."
+        columns:
+          - name: date_key
+            tests:
+              - not_null
+              - unique

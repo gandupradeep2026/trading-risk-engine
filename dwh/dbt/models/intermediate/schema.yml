@@ -1,0 +1,146 @@
+version: 2
+
+models:
+  - name: int_orders_enriched
+    description: "Multi-dimensional enriched trade orders joining instrument, portfolio, and trader dimensions with notional tiers and limit checks."
+    columns:
+      - name: trade_order_key
+        description: "Primary surrogate key from staging orders."
+        tests:
+          - not_null
+          - unique
+      - name: order_id
+        description: "Order execution ID."
+        tests:
+          - not_null
+      - name: portfolio_id
+        description: "Portfolio ID."
+        tests:
+          - not_null
+      - name: ticker
+        description: "Instrument ticker symbol."
+        tests:
+          - not_null
+      - name: trader_id
+        description: "Executing trader ID."
+        tests:
+          - not_null
+      - name: desk
+        description: "Associated trading desk."
+        tests:
+          - not_null
+      - name: signed_notional_usd
+        description: "Directional notional exposure (+ for BUY, - for SELL)."
+        tests:
+          - not_null
+      - name: notional_tier
+        description: "Notional trade size categorization."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['MICRO', 'STANDARD', 'LARGE', 'BLOCK']
+      - name: is_aggressive
+        description: "True for liquidity-taking MARKET orders."
+        tests:
+          - not_null
+      - name: is_limit_breach
+        description: "True if notional exceeds authorized trader single order limit."
+        tests:
+          - not_null
+
+  - name: int_portfolio_hourly_exposure
+    description: "Hourly portfolio risk exposure, gross turnover, order flow imbalance, and aggressive trade ratios."
+    columns:
+      - name: exposure_window_key
+        description: "Surrogate key for portfolio hourly window."
+        tests:
+          - not_null
+          - unique
+      - name: portfolio_id
+        description: "Portfolio book identifier."
+        tests:
+          - not_null
+      - name: desk
+        description: "Trading desk identifier."
+        tests:
+          - not_null
+      - name: trade_date
+        description: "Date of trading session."
+        tests:
+          - not_null
+      - name: order_hour
+        description: "Hour of day (0-23)."
+        tests:
+          - not_null
+      - name: gross_turnover_usd
+        description: "Cumulative gross trading volume in USD."
+        tests:
+          - not_null
+      - name: net_exposure_usd
+        description: "Net directional exposure (+ for net long, - for net short)."
+        tests:
+          - not_null
+      - name: order_flow_imbalance
+        description: "Normalized buy vs sell imbalance bounded between -1.0 and 1.0."
+        tests:
+          - not_null
+
+  - name: int_market_microstructure_hourly
+    description: "Hourly market microstructure aggregates including OHLC prices, hourly VWAP, spreads, and volume."
+    columns:
+      - name: microstructure_window_key
+        description: "Surrogate key for ticker hourly window."
+        tests:
+          - not_null
+          - unique
+      - name: ticker
+        description: "Instrument ticker symbol."
+        tests:
+          - not_null
+      - name: asset_class
+        description: "Asset class category."
+        tests:
+          - not_null
+      - name: tick_date
+        description: "Trading date."
+        tests:
+          - not_null
+      - name: tick_hour
+        description: "Hour of day (0-23)."
+        tests:
+          - not_null
+      - name: hourly_vwap
+        description: "Exact hourly Volume-Weighted Average Price."
+        tests:
+          - not_null
+      - name: total_volume
+        description: "Total executed contract or share volume."
+        tests:
+          - not_null
+
+  - name: int_risk_limit_breaches
+    description: "Portfolio risk headroom, breach classification, tail risk metrics, and correlated operational alerts."
+    columns:
+      - name: risk_breach_key
+        description: "Surrogate key for portfolio valuation breach record."
+        tests:
+          - not_null
+          - unique
+      - name: portfolio_id
+        description: "Portfolio identifier."
+        tests:
+          - not_null
+      - name: valuation_date
+        description: "Valuation date."
+        tests:
+          - not_null
+      - name: breach_severity
+        description: "Breach status based on limit utilization."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['NORMAL', 'WARNING', 'CRITICAL']
+      - name: limit_utilization_pct
+        description: "Utilization percentage of portfolio risk limit."
+        tests:
+          - not_null

@@ -39,6 +39,10 @@ try:
     from great_expectations_provider.operators.great_expectations import (  # type: ignore
         GreatExpectationsOperator,
     )
+    from orchestration.airflow.airflow_compat import (
+        DbtRunOperator,
+        DbtTestOperator,
+    )
 except (ImportError, ModuleNotFoundError):
     from orchestration.airflow.airflow_compat import (
         DAG,
@@ -48,6 +52,8 @@ except (ImportError, ModuleNotFoundError):
         DataprocCreateClusterOperator,
         DataprocDeleteClusterOperator,
         DataprocSubmitJobOperator,
+        DbtRunOperator,
+        DbtTestOperator,
         EmptyOperator,
         GreatExpectationsOperator,
         TaskGroup,
@@ -312,11 +318,31 @@ def build_trading_risk_dag(
                 on_failure_callback=create_failure_callback(),
                 doc_md="Refreshes partitioned, clustered BigQuery risk tables with latest valuation snapshots.",
             )
-            run_dbt = EmptyOperator(
+            run_dbt = DbtRunOperator(
                 task_id="run_dbt_transforms",
-                doc_md="Executes dbt staging and mart models creating materialized analytics views.",
+                models="staging intermediate",
+                target=cfg.environment,
+                retries=3,
+                retry_delay=timedelta(seconds=60),
+                retry_exponential_backoff=True,
+                max_retry_delay=timedelta(seconds=300),
+                on_retry_callback=create_retry_callback(),
+                on_failure_callback=create_failure_callback(),
+                doc_md="Executes dbt staging and intermediate models transforming star schema into analytical layers.",
             )
-            refresh_bigquery >> run_dbt
+            test_dbt = DbtTestOperator(
+                task_id="test_dbt_models",
+                models="staging intermediate",
+                target=cfg.environment,
+                retries=2,
+                retry_delay=timedelta(seconds=30),
+                retry_exponential_backoff=True,
+                max_retry_delay=timedelta(seconds=120),
+                on_retry_callback=create_retry_callback(),
+                on_failure_callback=create_failure_callback(),
+                doc_md="Evaluates dbt schema tests (unique, not_null, accepted_values, relationships).",
+            )
+            refresh_bigquery >> run_dbt >> test_dbt
 
         publish_risk_report = EmptyOperator(
             task_id="publish_risk_report",
