@@ -2,6 +2,7 @@
 
 from dwh.bigquery.config import (
     BigQueryDatasetConfig,
+    MATERIALIZED_VIEWS_CATALOG,
     STAR_SCHEMA_CATALOG,
     TablePartitionClusteringSpec,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "DbtRunner",
     "DbtTelemetry",
     "LocalBigQueryEmulator",
+    "MATERIALIZED_VIEWS_CATALOG",
     "STAR_SCHEMA_CATALOG",
     "TablePartitionClusteringSpec",
 ]

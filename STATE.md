@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 24
+- **Current Milestone Target**: Day 25
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 - **Execution Constraint (since 2026-10-31)**: GCP free trial has ended and the account will NOT be upgraded to paid. All remaining milestones MUST be implemented and verified 100% locally at zero cost: no `gcloud`/`terraform apply`, no real GCP API calls, no credentials. Use local substitutes (DuckDB / `dbt-duckdb` for BigQuery, SQLite for Cloud SQL, local filesystem for GCS, existing in-memory mocks for Pub/Sub/Kafka/Dataproc/Databricks/Airflow). Terraform/SQL for GCP is still authored as deployable code but validated only via static tests.
@@ -33,7 +33,7 @@
 - [x] **Day 21**: Great Expectations data quality test suites integrated into the Airflow DAG pipeline.
 - [x] **Day 22**: BigQuery DDL: partitioned and clustered star-schema tables for trades, tickers, and risk stats.
 - [x] **Day 23**: dbt project initialization with staging and intermediate SQL models for BigQuery.
-- [ ] **Day 24**: dbt mart models and BigQuery materialized views for real-time market performance analytics.
+- [x] **Day 24**: dbt mart models and BigQuery materialized views for real-time market performance analytics.
 - [ ] **Day 25**: Cloud SQL to BigQuery replication setup via BigQuery external/federated queries.
 - [ ] **Day 26**: Performance benchmarking documentation and BigQuery cost optimization runbook.
 - [ ] **Day 27**: GitHub Actions CI workflow (linting, black, flake8, mypy, pytest on push).
@@ -652,14 +652,33 @@
     - 34 unit and integration tests verifying dbt project manifests, model and macro syntax, DAG acyclicity and topological ordering, cycle rejection, compilation, hermetic DuckDB execution with seed data, analytical metrics accuracy (signed notional, notional tiers, hourly VWAP, order flow imbalance, risk headroom), schema test evaluation (100% pass rate on clean data, failure detection on corrupted data), Prometheus metrics formatting, Airflow operator execution and retries, master DAG topological acyclicity, and CLI runner execution.
 - **Verification Status**: 614/614 tests passed cleanly (`python -m pytest tests/ -v`).
 
-
-
-
-
-
-
-
-
-
-
-
+### Day 24 - 2026-11-04
+- **Milestone Completed**: dbt mart models and BigQuery materialized views for real-time market performance analytics.
+- **Key Changes Implemented**:
+  - Built BigQuery Materialized Views for sub-second real-time market performance analytics (`dwh/bigquery/ddl/`):
+    - `mv_realtime_market_performance.sql`: Automated 15-minute refresh materialized view over `fact_market_ticks` aggregating tick volume, gross notional USD, relative spread in bps, and bid/ask price boundaries, clustered by `asset_class`, `ticker`.
+    - `mv_realtime_trader_exposure.sql`: Automated 15-minute refresh materialized view over `fact_trade_orders` aggregating executed order counts, gross notional volume, exchange fees, and slippage, clustered by `portfolio_id`, `ticker`, `trader_id`.
+    - `mv_realtime_risk_alerts.sql`: Automated 15-minute refresh materialized view over `fact_risk_alerts` aggregating active anomaly alerts, observed vs threshold values, and breach counts, clustered by `portfolio_id`, `severity`, `alert_type`.
+    - `all_materialized_views.sql`: Master GoogleSQL deployment script compiling and creating all 3 materialized views.
+    - JSON schemas declared in `dwh/bigquery/schemas/` and `terraform/modules/bigquery/schemas/`.
+    - Extended BigQuery catalog specifications in `dwh/bigquery/config.py` with `MATERIALIZED_VIEWS_CATALOG` and clustering rules.
+  - Enhanced Terraform BigQuery module (`terraform/modules/bigquery/`):
+    - Added `google_bigquery_table` resources for the 3 materialized views with automated refresh policies (`refresh_interval_ms = 900000`), clustering, schemas, and resource labels.
+    - Added variable `mv_refresh_interval_ms` and outputs `mv_realtime_market_performance_id`, `mv_realtime_trader_exposure_id`, `mv_realtime_risk_alerts_id`, and `materialized_view_ids`.
+    - Wired `bigquery_materialized_views` map output into root `terraform/outputs.tf`.
+  - Upgraded Local BigQuery Emulator (`dwh/bigquery/emulator.py`):
+    - Added `translate_materialized_view_ddl_to_duckdb` translating GoogleSQL `CREATE MATERIALIZED VIEW` statements into DuckDB views with `OPTIONS` and `CLUSTER BY` clause stripping.
+    - Added `create_materialized_view_from_ddl` and `initialize_materialized_views` deploying the 3 materialized views locally at zero cost.
+    - Added `validate_materialized_views_catalog` in `dwh/bigquery/schema_manager.py`.
+  - Built 4 production dbt mart models (`dwh/dbt/models/marts/`):
+    - `fct_daily_market_performance.sql`: Daily instrument market performance mart capturing OHLC prices, volume-weighted average price (session VWAP), spread dynamics, volatility session classification, and liquidity tiers (`HIGH`, `MEDIUM`, `LOW`).
+    - `fct_trader_performance_daily.sql`: Daily trading execution, desk exposure, turnover, and limit compliance performance mart analyzing filled orders, gross turnover, net delta, aggressive taker ratios, block trades, and single-order limit breaches.
+    - `fct_portfolio_risk_daily.sql`: Daily portfolio Value-at-Risk (VaR), CVaR tail risk, headroom, and capital adequacy compliance mart joining Parametric, Historical, and Monte Carlo VaR with portfolio mandate limits.
+    - `fct_risk_alerts_summary.sql`: Analytical summary mart of streaming anomaly alerts, flash crash drawdowns, fat finger events, and limit breaches by desk, portfolio, and severity.
+    - `models/marts/schema.yml`: Comprehensive documentation and 40+ column-level schema tests (`unique`, `not_null`, `accepted_values`, `relationships`).
+  - Extended dbt project manager & execution engine (`dwh/dbt/`):
+    - Updated `discover_and_parse_models` and `get_execution_order` in `project_manager.py` to support `marts` and `marts.*` layers, preserving Kahn's topological sort order (`staging -> intermediate -> marts`).
+    - Updated `dwh/dbt/README.md` with updated architecture overview and Mermaid data lineage diagram including the Marts layer and BigQuery Materialized Views.
+  - Comprehensive zero-cost test suite in `tests/test_dbt_marts_and_materialized_views.py`:
+    - 33 new unit and integration tests verifying Terraform BigQuery module MV resources, balanced braces, DDL scripts, JSON schemas, catalog specs, DuckDB emulator MV execution, Arrow table conversion, 15-model DAG discovery and topological sorting, model compilation, hermetic DuckDB execution (100% table row generation for marts), financial metric accuracy (OHLCV, session VWAP, trader delta/turnover, portfolio headroom), schema test evaluation (100% pass rate), intentional corruption detection, Prometheus metrics exposition, Airflow operator execution with marts, and CLI runner execution with reports.
+- **Verification Status**: 647/647 tests passed cleanly (`python -m pytest tests/ -v`).

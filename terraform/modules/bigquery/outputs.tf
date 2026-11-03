@@ -66,3 +66,27 @@ output "dim_date_table_id" {
   description = "The table ID for dim_date"
   value       = google_bigquery_table.dim_date.table_id
 }
+
+output "mv_realtime_market_performance_id" {
+  description = "The table ID for mv_realtime_market_performance"
+  value       = google_bigquery_table.mv_realtime_market_performance.table_id
+}
+
+output "mv_realtime_trader_exposure_id" {
+  description = "The table ID for mv_realtime_trader_exposure"
+  value       = google_bigquery_table.mv_realtime_trader_exposure.table_id
+}
+
+output "mv_realtime_risk_alerts_id" {
+  description = "The table ID for mv_realtime_risk_alerts"
+  value       = google_bigquery_table.mv_realtime_risk_alerts.table_id
+}
+
+output "materialized_view_ids" {
+  description = "Map of logical materialized view names to BigQuery table IDs"
+  value = {
+    mv_realtime_market_performance = google_bigquery_table.mv_realtime_market_performance.table_id
+    mv_realtime_trader_exposure   = google_bigquery_table.mv_realtime_trader_exposure.table_id
+    mv_realtime_risk_alerts       = google_bigquery_table.mv_realtime_risk_alerts.table_id
+  }
+}

@@ -20,7 +20,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import duckdb
 import pyarrow as pa
 
-from dwh.bigquery.config import STAR_SCHEMA_CATALOG, TablePartitionClusteringSpec
+from dwh.bigquery.config import (
+    MATERIALIZED_VIEWS_CATALOG,
+    STAR_SCHEMA_CATALOG,
+    TablePartitionClusteringSpec,
+)
 from dwh.bigquery.schema_manager import BigQuerySchemaManager
 from dwh.bigquery.seed_data import (
     get_dim_date_records,
@@ -139,6 +143,7 @@ class LocalBigQueryEmulator:
         self.schema_manager = BigQuerySchemaManager()
         self.telemetry = BigQueryTelemetry()
         self.table_specs: Dict[str, TablePartitionClusteringSpec] = dict(STAR_SCHEMA_CATALOG)
+        self.table_specs.update(MATERIALIZED_VIEWS_CATALOG)
         self._lock = threading.Lock()
 
         # Initialize dataset schema in DuckDB
@@ -202,6 +207,54 @@ class LocalBigQueryEmulator:
         ]
         for tbl in creation_order:
             self.create_table_from_ddl(tbl)
+
+    def translate_materialized_view_ddl_to_duckdb(self, bq_ddl: str) -> str:
+        """Translate GoogleSQL BigQuery Materialized View DDL into DuckDB compatible SQL."""
+        # Clean comments
+        sql = re.sub(r"--.*", "", bq_ddl)
+
+        # Replace project and dataset references
+        sql = sql.replace("${project_id}", self.project_id)
+        sql = sql.replace("${dataset_id}", self.dataset_id)
+        sql = sql.replace(f"`{self.project_id}.{self.dataset_id}.", f"{self.dataset_id}.")
+        sql = sql.replace(f"`{self.project_id}.{self.dataset_id}", f"{self.dataset_id}")
+        sql = sql.replace("`", "")
+
+        # Strip all OPTIONS clauses
+        sql = _strip_options_clauses(sql)
+
+        # Strip CLUSTER BY clause: CLUSTER BY col1, col2, ...
+        sql = re.sub(r"\bCLUSTER\s+BY\s+[a-zA-Z0-9_,\s]+(?=\bOPTIONS\b|\bAS\b)", "", sql, flags=re.IGNORECASE)
+
+        # Strip PARTITION BY clause if present
+        sql = re.sub(r"\bPARTITION\s+BY\s+[a-zA-Z0-9_,\s]+(?=\bCLUSTER\b|\bOPTIONS\b|\bAS\b)", "", sql, flags=re.IGNORECASE)
+
+        # Replace CREATE MATERIALIZED VIEW [IF NOT EXISTS] with CREATE OR REPLACE VIEW
+        sql = re.sub(
+            r"CREATE\s+MATERIALIZED\s+VIEW(?:\s+IF\s+NOT\s+EXISTS)?\s+",
+            "CREATE OR REPLACE VIEW ",
+            sql,
+            flags=re.IGNORECASE,
+        )
+
+        return sql.strip()
+
+    def create_materialized_view_from_ddl(self, mv_name: str) -> None:
+        """Create a materialized view in DuckDB from rendered GoogleSQL DDL."""
+        raw_ddl = self.schema_manager.load_raw_ddl(mv_name)
+        duck_sql = self.translate_materialized_view_ddl_to_duckdb(raw_ddl)
+        with self._lock:
+            self.connection.execute(duck_sql)
+
+    def initialize_materialized_views(self) -> None:
+        """Deploy all 3 BigQuery materialized views."""
+        views = [
+            "mv_realtime_market_performance",
+            "mv_realtime_trader_exposure",
+            "mv_realtime_risk_alerts",
+        ]
+        for mv in views:
+            self.create_materialized_view_from_ddl(mv)
 
     def load_seed_dimensions(
         self,

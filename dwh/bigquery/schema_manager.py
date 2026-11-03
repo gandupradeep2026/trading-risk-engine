@@ -14,7 +14,11 @@ from typing import Any, Dict, List, Optional
 
 import pyarrow as pa
 
-from dwh.bigquery.config import STAR_SCHEMA_CATALOG, TablePartitionClusteringSpec
+from dwh.bigquery.config import (
+    MATERIALIZED_VIEWS_CATALOG,
+    STAR_SCHEMA_CATALOG,
+    TablePartitionClusteringSpec,
+)
 
 ALLOWED_BIGQUERY_TYPES = {
     "STRING",
@@ -181,6 +185,21 @@ class BigQuerySchemaManager:
             if spec.partition_column and spec.partition_column not in fields:
                 raise SchemaValidationError(
                     f"Partition column '{spec.partition_column}' in spec not found in table '{table_name}' fields: {fields}"
+                )
+
+    def validate_materialized_views_catalog(self) -> None:
+        """Validate all materialized views against JSON schema files, DDLs, and specs."""
+        for mv_name, spec in MATERIALIZED_VIEWS_CATALOG.items():
+            fields = {f["name"] for f in self.load_json_schema(mv_name)}
+            self.load_raw_ddl(mv_name)
+            for cluster_col in spec.clustering_columns:
+                if cluster_col not in fields:
+                    raise SchemaValidationError(
+                        f"Clustering column '{cluster_col}' in spec not found in materialized view '{mv_name}' fields: {fields}"
+                    )
+            if spec.partition_column and spec.partition_column not in fields:
+                raise SchemaValidationError(
+                    f"Partition column '{spec.partition_column}' in spec not found in materialized view '{mv_name}' fields: {fields}"
                 )
 
     def to_arrow_schema(self, table_name: str) -> pa.Schema:

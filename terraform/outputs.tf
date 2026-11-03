@@ -268,3 +268,8 @@ output "bigquery_dim_date_table_id" {
   description = "BigQuery table ID for dim_date"
   value       = module.bigquery.dim_date_table_id
 }
+
+output "bigquery_materialized_views" {
+  description = "Map of BigQuery Materialized Views for real-time market performance analytics"
+  value       = module.bigquery.materialized_view_ids
+}

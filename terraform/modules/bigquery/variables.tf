@@ -68,3 +68,9 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "mv_refresh_interval_ms" {
+  description = "Refresh interval in milliseconds for BigQuery Materialized Views (default: 15 minutes / 900000ms)"
+  type        = number
+  default     = 900000
+}

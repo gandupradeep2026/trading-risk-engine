@@ -181,3 +181,66 @@ resource "google_bigquery_table" "fact_risk_alerts" {
   schema     = file("${path.module}/schemas/fact_risk_alerts.json")
   labels     = local.common_labels
 }
+
+# -----------------------------------------------------------------------------
+# 5. MATERIALIZED VIEWS (REAL-TIME PERFORMANCE ANALYTICS - DAY 24)
+# -----------------------------------------------------------------------------
+resource "google_bigquery_table" "mv_realtime_market_performance" {
+  dataset_id          = google_bigquery_dataset.dwh_dataset.dataset_id
+  table_id            = "mv_realtime_market_performance"
+  project             = var.project_id
+  description         = "Real-time materialized view aggregating intraday market ticks and microstructure metrics."
+  deletion_protection = !var.delete_contents_on_destroy
+
+  materialized_view {
+    query               = "SELECT tick_date, asset_class, ticker, COUNT(*) AS tick_count, SUM(volume) AS total_volume, ROUND(SUM(last_price * volume), 4) AS gross_notional_usd, ROUND(AVG(relative_spread_bps), 2) AS avg_relative_spread_bps, MIN(bid_price) AS min_bid_price, MAX(ask_price) AS max_ask_price FROM `${var.project_id}.${local.dataset_id}.fact_market_ticks` GROUP BY tick_date, asset_class, ticker"
+    enable_refresh      = true
+    refresh_interval_ms = var.mv_refresh_interval_ms
+  }
+
+  clustering = ["asset_class", "ticker"]
+  schema     = file("${path.module}/schemas/mv_realtime_market_performance.json")
+  labels     = local.common_labels
+
+  depends_on = [google_bigquery_table.fact_market_ticks]
+}
+
+resource "google_bigquery_table" "mv_realtime_trader_exposure" {
+  dataset_id          = google_bigquery_dataset.dwh_dataset.dataset_id
+  table_id            = "mv_realtime_trader_exposure"
+  project             = var.project_id
+  description         = "Real-time materialized view aggregating intraday trade executions, notional volume, and slippage."
+  deletion_protection = !var.delete_contents_on_destroy
+
+  materialized_view {
+    query               = "SELECT trade_date, portfolio_id, ticker, trader_id, execution_status, COUNT(*) AS order_count, SUM(quantity) AS total_quantity, ROUND(SUM(notional_usd), 2) AS gross_notional_usd, ROUND(SUM(fee_usd), 2) AS total_fees_usd, ROUND(AVG(slippage_bps), 2) AS avg_slippage_bps, ROUND(MAX(notional_usd), 2) AS max_order_notional_usd FROM `${var.project_id}.${local.dataset_id}.fact_trade_orders` GROUP BY trade_date, portfolio_id, ticker, trader_id, execution_status"
+    enable_refresh      = true
+    refresh_interval_ms = var.mv_refresh_interval_ms
+  }
+
+  clustering = ["portfolio_id", "ticker", "trader_id"]
+  schema     = file("${path.module}/schemas/mv_realtime_trader_exposure.json")
+  labels     = local.common_labels
+
+  depends_on = [google_bigquery_table.fact_trade_orders]
+}
+
+resource "google_bigquery_table" "mv_realtime_risk_alerts" {
+  dataset_id          = google_bigquery_dataset.dwh_dataset.dataset_id
+  table_id            = "mv_realtime_risk_alerts"
+  project             = var.project_id
+  description         = "Real-time materialized view aggregating streaming risk alerts and anomaly breach metrics."
+  deletion_protection = !var.delete_contents_on_destroy
+
+  materialized_view {
+    query               = "SELECT alert_date, portfolio_id, severity, alert_type, COUNT(*) AS alert_count, ROUND(MAX(observed_value), 4) AS max_observed_value, ROUND(AVG(observed_value), 4) AS avg_observed_value, ROUND(AVG(threshold_value), 4) AS avg_threshold_value FROM `${var.project_id}.${local.dataset_id}.fact_risk_alerts` GROUP BY alert_date, portfolio_id, severity, alert_type"
+    enable_refresh      = true
+    refresh_interval_ms = var.mv_refresh_interval_ms
+  }
+
+  clustering = ["portfolio_id", "severity", "alert_type"]
+  schema     = file("${path.module}/schemas/mv_realtime_risk_alerts.json")
+  labels     = local.common_labels
+
+  depends_on = [google_bigquery_table.fact_risk_alerts]
+}

@@ -1,7 +1,7 @@
-# trading_risk_dbt: BigQuery & DuckDB dbt Project (Day 23)
+# trading_risk_dbt: BigQuery & DuckDB dbt Project (Days 23-24)
 
 ## Architecture Overview
-`trading_risk_dbt` is an enterprise financial analytics dbt project transforming raw BigQuery star-schema tables into standardized staging models and multi-dimensional intermediate analytical datasets.
+`trading_risk_dbt` is an enterprise financial analytics dbt project transforming raw BigQuery star-schema tables into standardized staging models, multi-dimensional intermediate analytical datasets, and high-performance analytical mart tables, coupled with BigQuery Materialized Views for sub-second real-time market performance analytics.
 
 ```mermaid
 flowchart TD
@@ -13,6 +13,12 @@ flowchart TD
         S_TICKERS[dim_tickers]
         S_PORTS[dim_portfolios]
         S_TRADERS[dim_traders]
+    end
+
+    subgraph MaterializedViews [BigQuery Materialized Views: mv_]
+        MV_TICKS[mv_realtime_market_performance]
+        MV_ORDERS[mv_realtime_trader_exposure]
+        MV_ALERTS[mv_realtime_risk_alerts]
     end
 
     subgraph Staging [Staging Views: stg_]
@@ -31,6 +37,17 @@ flowchart TD
         INT_MICRO[int_market_microstructure_hourly]
         INT_BREACHES[int_risk_limit_breaches]
     end
+
+    subgraph Marts [Analytical Mart Tables: fct_]
+        MART_MKT[fct_daily_market_performance]
+        MART_TRADER[fct_trader_performance_daily]
+        MART_RISK[fct_portfolio_risk_daily]
+        MART_ALERTS[fct_risk_alerts_summary]
+    end
+
+    S_TICKS -.-> MV_TICKS
+    S_ORDERS -.-> MV_ORDERS
+    S_ALERTS -.-> MV_ALERTS
 
     S_ORDERS --> STG_ORDERS
     S_TICKS --> STG_TICKS
@@ -53,6 +70,19 @@ flowchart TD
     STG_STATS --> INT_BREACHES
     STG_PORTS --> INT_BREACHES
     STG_ALERTS --> INT_BREACHES
+
+    INT_MICRO --> MART_MKT
+    STG_TICKERS --> MART_MKT
+
+    INT_ENRICHED --> MART_TRADER
+    STG_TRADERS --> MART_TRADER
+    STG_PORTS --> MART_TRADER
+
+    INT_BREACHES --> MART_RISK
+    STG_PORTS --> MART_RISK
+
+    STG_ALERTS --> MART_ALERTS
+    STG_PORTS --> MART_ALERTS
 ```
 
 ## Models Catalog
@@ -69,3 +99,14 @@ flowchart TD
 - `int_portfolio_hourly_exposure`: Rolls up orders hourly per portfolio and desk, deriving gross turnover, net directional exposure, order flow imbalance, and aggressive trade ratios.
 - `int_market_microstructure_hourly`: Rolls up high-frequency ticks hourly per instrument, computing OHLC prices, exact hourly VWAP, total contract volume, and volatility price range in basis points.
 - `int_risk_limit_breaches`: Evaluates portfolio risk headroom, tail risk ratios, limit breach severity (`NORMAL`, `WARNING`, `CRITICAL`), and correlated operational alerts.
+
+### Marts Layer (`models/marts/` - Day 24)
+- `fct_daily_market_performance`: Daily instrument market performance mart capturing OHLC prices, session VWAP, spread metrics, and liquidity classification (`HIGH`, `MEDIUM`, `LOW`).
+- `fct_trader_performance_daily`: Daily trader, desk, and execution quality performance mart analyzing order counts, gross turnover, net delta, aggressive taker ratio, block trades, and single-order limit compliance.
+- `fct_portfolio_risk_daily`: Daily portfolio risk, capital adequacy, and limit compliance mart joining VaR methodologies (parametric, historical, Monte Carlo), CVaR Expected Shortfall, headroom, utilization %, and capital adequacy.
+- `fct_risk_alerts_summary`: Analytical summary mart of streaming anomaly alerts, flash crashes, fat finger events, and limit breaches by desk, portfolio, and severity.
+
+### BigQuery Materialized Views (`dwh/bigquery/ddl/` - Day 24)
+- `mv_realtime_market_performance`: Automated 15-minute refresh materialized view aggregating real-time tick volume, gross notional USD, relative spread in bps, and bid/ask boundaries over `fact_market_ticks`.
+- `mv_realtime_trader_exposure`: Automated 15-minute refresh materialized view aggregating real-time executed order count, gross notional, fees, and slippage over `fact_trade_orders`.
+- `mv_realtime_risk_alerts`: Automated 15-minute refresh materialized view aggregating streaming risk alerts and anomaly breach metrics over `fact_risk_alerts`.

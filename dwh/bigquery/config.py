@@ -154,6 +154,49 @@ STAR_SCHEMA_CATALOG: Dict[str, TablePartitionClusteringSpec] = {
     ]
 }
 
+# -----------------------------------------------------------------------------
+# MATERIALIZED VIEWS SPECS (DAY 24)
+# -----------------------------------------------------------------------------
+
+MV_REALTIME_MARKET_PERFORMANCE_SPEC = TablePartitionClusteringSpec(
+    table_name="mv_realtime_market_performance",
+    table_type="MATERIALIZED_VIEW",
+    partition_column="tick_date",
+    partition_type="DAY",
+    require_partition_filter=False,
+    clustering_columns=["asset_class", "ticker"],
+    description="Real-time materialized view aggregating intraday market ticks and microstructure metrics.",
+)
+
+MV_REALTIME_TRADER_EXPOSURE_SPEC = TablePartitionClusteringSpec(
+    table_name="mv_realtime_trader_exposure",
+    table_type="MATERIALIZED_VIEW",
+    partition_column="trade_date",
+    partition_type="DAY",
+    require_partition_filter=False,
+    clustering_columns=["portfolio_id", "ticker", "trader_id"],
+    description="Real-time materialized view aggregating intraday trade executions, notional volume, and slippage.",
+)
+
+MV_REALTIME_RISK_ALERTS_SPEC = TablePartitionClusteringSpec(
+    table_name="mv_realtime_risk_alerts",
+    table_type="MATERIALIZED_VIEW",
+    partition_column="alert_date",
+    partition_type="DAY",
+    require_partition_filter=False,
+    clustering_columns=["portfolio_id", "severity", "alert_type"],
+    description="Real-time materialized view aggregating streaming risk alerts and anomaly breach metrics.",
+)
+
+MATERIALIZED_VIEWS_CATALOG: Dict[str, TablePartitionClusteringSpec] = {
+    spec.table_name: spec
+    for spec in [
+        MV_REALTIME_MARKET_PERFORMANCE_SPEC,
+        MV_REALTIME_TRADER_EXPOSURE_SPEC,
+        MV_REALTIME_RISK_ALERTS_SPEC,
+    ]
+}
+
 
 class BigQueryDatasetConfig(BaseModel):
     """Enterprise configuration for BigQuery Data Warehouse dataset."""

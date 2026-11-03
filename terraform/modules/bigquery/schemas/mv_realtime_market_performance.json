@@ -1,0 +1,56 @@
+[
+  {
+    "name": "tick_date",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "Tick event calendar date matching base partition"
+  },
+  {
+    "name": "asset_class",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Asset class category: EQUITY, FX, COMMODITY, CRYPTO, ETF"
+  },
+  {
+    "name": "ticker",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Instrument symbol"
+  },
+  {
+    "name": "tick_count",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Aggregated count of tick events in partition"
+  },
+  {
+    "name": "total_volume",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Total traded volume across ticks"
+  },
+  {
+    "name": "gross_notional_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Total gross notional exposure in USD"
+  },
+  {
+    "name": "avg_relative_spread_bps",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Average relative bid-ask spread in basis points"
+  },
+  {
+    "name": "min_bid_price",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Minimum observed bid price"
+  },
+  {
+    "name": "max_ask_price",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Maximum observed ask price"
+  }
+]

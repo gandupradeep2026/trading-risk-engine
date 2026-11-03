@@ -1,0 +1,50 @@
+[
+  {
+    "name": "alert_date",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "Risk alert detection date"
+  },
+  {
+    "name": "portfolio_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Portfolio book identifier"
+  },
+  {
+    "name": "severity",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Alert severity level: INFO, WARNING, CRITICAL"
+  },
+  {
+    "name": "alert_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Streaming anomaly category"
+  },
+  {
+    "name": "alert_count",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Aggregated count of risk alert events"
+  },
+  {
+    "name": "max_observed_value",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Maximum observed metric value during breach"
+  },
+  {
+    "name": "avg_observed_value",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Average observed metric value"
+  },
+  {
+    "name": "avg_threshold_value",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Average configured threshold limit value"
+  }
+]

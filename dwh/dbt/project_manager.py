@@ -85,13 +85,26 @@ class DbtProjectManager:
                 self.profiles_manifest = yaml.safe_load(f) or {}
 
     def discover_and_parse_models(self) -> None:
-        """Discover all .sql model files across staging and intermediate directories."""
+        """Discover all .sql model files across model layer directories."""
         models_root = self.project_dir / "models"
         if not models_root.exists():
             return
 
+        # Check if config.models specifically restricts discovery layers
+        allowed_layers: Optional[Set[str]] = None
+        if self.config.models and "all" not in self.config.models:
+            config_layers = {
+                m.lower().replace(".*", "").strip()
+                for m in self.config.models
+                if m.lower().replace(".*", "").strip() in ("staging", "intermediate", "marts")
+            }
+            if config_layers:
+                allowed_layers = config_layers
+
         for sql_file in sorted(models_root.glob("**/*.sql")):
             layer = sql_file.parent.name.lower()
+            if allowed_layers is not None and layer not in allowed_layers:
+                continue
             model_name = sql_file.stem.lower()
 
             with open(sql_file, "r", encoding="utf-8") as f:
@@ -109,7 +122,7 @@ class DbtProjectManager:
     ) -> DbtModelNode:
         """Extract config, refs, and sources from model SQL content."""
         # Parse {{ config(...) }}
-        materialized = "view" if layer == "staging" else "view"
+        materialized = "table" if layer == "marts" else "view"
         tags: List[str] = [layer]
 
         config_match = re.search(r"\{\{\s*config\s*\((.*?)\)\s*\}\}", raw_sql, re.DOTALL | re.IGNORECASE)
@@ -173,13 +186,14 @@ class DbtProjectManager:
             if "models" in content:
                 for mdl in content["models"]:
                     mdl_name = mdl.get("name", "").lower()
-                    if mdl_name in self.models:
-                        self.models[mdl_name].description = mdl.get("description", "")
+                    if mdl_name not in self.models:
+                        continue
+                    self.models[mdl_name].description = mdl.get("description", "")
                     for col in mdl.get("columns", []):
                         col_name = col.get("name", "")
                         for test in col.get("tests", []):
                             spec = self._add_test_spec(mdl_name, col_name, test)
-                            if spec and mdl_name in self.models:
+                            if spec:
                                 self.models[mdl_name].tests.append(spec)
 
     def _add_test_spec(self, model_name: str, column_name: str, test_def: Any) -> Optional[DbtTestSpec]:
@@ -231,6 +245,8 @@ class DbtProjectManager:
                     target_nodes.update(k for k, v in self.models.items() if v.layer == "staging")
                 elif sel_clean in ("intermediate", "intermediate.*"):
                     target_nodes.update(k for k, v in self.models.items() if v.layer == "intermediate")
+                elif sel_clean in ("marts", "marts.*"):
+                    target_nodes.update(k for k, v in self.models.items() if v.layer == "marts")
                 elif sel_clean in self.models:
                     target_nodes.add(sel_clean)
 

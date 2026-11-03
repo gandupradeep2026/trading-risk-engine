@@ -1,0 +1,159 @@
+version: 2
+
+models:
+  - name: fct_daily_market_performance
+    description: "Daily instrument market performance mart capturing OHLC prices, session VWAP, spread metrics, and liquidity classification."
+    columns:
+      - name: performance_date_key
+        description: "Surrogate key for ticker and date."
+        tests:
+          - not_null
+          - unique
+      - name: ticker
+        description: "Instrument ticker symbol."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_tickers')
+              field: ticker
+      - name: tick_date
+        description: "Trading calendar date."
+        tests:
+          - not_null
+      - name: asset_class
+        description: "Asset class category."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['EQUITY', 'FX', 'COMMODITY', 'CRYPTO', 'ETF']
+      - name: total_volume
+        description: "Cumulative traded volume in contracts or shares."
+        tests:
+          - not_null
+      - name: session_vwap
+        description: "Volume-weighted average price across all active trading hours."
+        tests:
+          - not_null
+      - name: is_volatile_session
+        description: "Flag indicating whether session price range exceeded 200 basis points."
+        tests:
+          - not_null
+      - name: liquidity_tier
+        description: "Liquidity category based on cumulative trading volume."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['HIGH', 'MEDIUM', 'LOW']
+
+  - name: fct_trader_performance_daily
+    description: "Daily trading execution, desk exposure, turnover, and limit compliance performance mart."
+    columns:
+      - name: trader_perf_key
+        description: "Surrogate key for trader, portfolio, and date."
+        tests:
+          - not_null
+          - unique
+      - name: trade_date
+        description: "Trading session date."
+        tests:
+          - not_null
+      - name: trader_id
+        description: "Executing trader identifier."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_traders')
+              field: trader_id
+      - name: portfolio_id
+        description: "Trading portfolio book identifier."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_portfolios')
+              field: portfolio_id
+      - name: desk
+        description: "Trading desk classification."
+        tests:
+          - not_null
+      - name: gross_turnover_usd
+        description: "Cumulative traded gross notional in USD."
+        tests:
+          - not_null
+      - name: total_orders_executed
+        description: "Total order count executed by trader."
+        tests:
+          - not_null
+      - name: has_limit_breach
+        description: "True if any executed order breached single-order risk limits."
+        tests:
+          - not_null
+
+  - name: fct_portfolio_risk_daily
+    description: "Daily portfolio Value-at-Risk (VaR), CVaR tail risk, headroom, and capital adequacy compliance mart."
+    columns:
+      - name: portfolio_risk_key
+        description: "Surrogate key for portfolio, date, and confidence level."
+        tests:
+          - not_null
+          - unique
+      - name: valuation_date
+        description: "Valuation date."
+        tests:
+          - not_null
+      - name: portfolio_id
+        description: "Portfolio book identifier."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_portfolios')
+              field: portfolio_id
+      - name: risk_regime
+        description: "Portfolio risk classification regime."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['LOW_RISK', 'MODERATE_RISK', 'ELEVATED_RISK', 'HIGH_RISK', 'CRITICAL_BREACH']
+      - name: breach_severity
+        description: "Limit breach severity classification."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['NORMAL', 'WARNING', 'CRITICAL']
+      - name: is_capital_adequate
+        description: "True if risk headroom is non-negative."
+        tests:
+          - not_null
+
+  - name: fct_risk_alerts_summary
+    description: "Analytical summary mart of streaming anomaly alerts, flash crashes, and limit breaches."
+    columns:
+      - name: alert_summary_key
+        description: "Surrogate key for portfolio, date, alert type, and severity."
+        tests:
+          - not_null
+          - unique
+      - name: alert_date
+        description: "Alert detection date."
+        tests:
+          - not_null
+      - name: portfolio_id
+        description: "Portfolio book identifier."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_portfolios')
+              field: portfolio_id
+      - name: severity
+        description: "Alert severity."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['INFO', 'WARNING', 'CRITICAL']
+      - name: total_alerts
+        description: "Total count of alerts in partition."
+        tests:
+          - not_null
+      - name: is_critical
+        description: "True if severity is CRITICAL."
+        tests:
+          - not_null

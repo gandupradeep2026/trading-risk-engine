@@ -3,6 +3,7 @@
 from dwh.bigquery.config import (
     BigQueryDatasetConfig,
     STAR_SCHEMA_CATALOG,
+    MATERIALIZED_VIEWS_CATALOG,
     TablePartitionClusteringSpec,
     DIM_TICKERS_SPEC,
     DIM_PORTFOLIOS_SPEC,
@@ -12,6 +13,9 @@ from dwh.bigquery.config import (
     FACT_MARKET_TICKS_SPEC,
     FACT_RISK_STATS_SPEC,
     FACT_RISK_ALERTS_SPEC,
+    MV_REALTIME_MARKET_PERFORMANCE_SPEC,
+    MV_REALTIME_TRADER_EXPOSURE_SPEC,
+    MV_REALTIME_RISK_ALERTS_SPEC,
 )
 from dwh.bigquery.schema_manager import (
     BigQuerySchemaManager,
@@ -46,6 +50,10 @@ __all__ = [
     "FACT_MARKET_TICKS_SPEC",
     "FACT_RISK_STATS_SPEC",
     "FACT_RISK_ALERTS_SPEC",
+    "MV_REALTIME_MARKET_PERFORMANCE_SPEC",
+    "MV_REALTIME_TRADER_EXPOSURE_SPEC",
+    "MV_REALTIME_RISK_ALERTS_SPEC",
+    "MATERIALIZED_VIEWS_CATALOG",
     "BigQuerySchemaManager",
     "SchemaValidationError",
     "BigQueryEmulatorError",

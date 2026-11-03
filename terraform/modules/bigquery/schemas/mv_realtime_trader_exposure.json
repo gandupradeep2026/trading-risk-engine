@@ -1,0 +1,68 @@
+[
+  {
+    "name": "trade_date",
+    "type": "DATE",
+    "mode": "REQUIRED",
+    "description": "Trade execution calendar date"
+  },
+  {
+    "name": "portfolio_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Trading portfolio book identifier"
+  },
+  {
+    "name": "ticker",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Instrument symbol"
+  },
+  {
+    "name": "trader_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Executing trader identifier"
+  },
+  {
+    "name": "execution_status",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Order execution status"
+  },
+  {
+    "name": "order_count",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Total executed order count"
+  },
+  {
+    "name": "total_quantity",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Total filled order quantity"
+  },
+  {
+    "name": "gross_notional_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Total executed gross notional in USD"
+  },
+  {
+    "name": "total_fees_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Total exchange and broker execution fees"
+  },
+  {
+    "name": "avg_slippage_bps",
+    "type": "FLOAT64",
+    "mode": "REQUIRED",
+    "description": "Average slippage in basis points"
+  },
+  {
+    "name": "max_order_notional_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Maximum single order notional in USD"
+  }
+]
