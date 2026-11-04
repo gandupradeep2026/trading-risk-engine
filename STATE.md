@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 25
+- **Current Milestone Target**: Day 26
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 - **Execution Constraint (since 2026-10-31)**: GCP free trial has ended and the account will NOT be upgraded to paid. All remaining milestones MUST be implemented and verified 100% locally at zero cost: no `gcloud`/`terraform apply`, no real GCP API calls, no credentials. Use local substitutes (DuckDB / `dbt-duckdb` for BigQuery, SQLite for Cloud SQL, local filesystem for GCS, existing in-memory mocks for Pub/Sub/Kafka/Dataproc/Databricks/Airflow). Terraform/SQL for GCP is still authored as deployable code but validated only via static tests.
@@ -34,7 +34,7 @@
 - [x] **Day 22**: BigQuery DDL: partitioned and clustered star-schema tables for trades, tickers, and risk stats.
 - [x] **Day 23**: dbt project initialization with staging and intermediate SQL models for BigQuery.
 - [x] **Day 24**: dbt mart models and BigQuery materialized views for real-time market performance analytics.
-- [ ] **Day 25**: Cloud SQL to BigQuery replication setup via BigQuery external/federated queries.
+- [x] **Day 25**: Cloud SQL to BigQuery replication setup via BigQuery external/federated queries.
 - [ ] **Day 26**: Performance benchmarking documentation and BigQuery cost optimization runbook.
 - [ ] **Day 27**: GitHub Actions CI workflow (linting, black, flake8, mypy, pytest on push).
 - [ ] **Day 28**: Cloud Monitoring alerting policies, Pub/Sub lag metrics, and Slack DLQ alerts.
@@ -682,3 +682,74 @@
   - Comprehensive zero-cost test suite in `tests/test_dbt_marts_and_materialized_views.py`:
     - 33 new unit and integration tests verifying Terraform BigQuery module MV resources, balanced braces, DDL scripts, JSON schemas, catalog specs, DuckDB emulator MV execution, Arrow table conversion, 15-model DAG discovery and topological sorting, model compilation, hermetic DuckDB execution (100% table row generation for marts), financial metric accuracy (OHLCV, session VWAP, trader delta/turnover, portfolio headroom), schema test evaluation (100% pass rate), intentional corruption detection, Prometheus metrics exposition, Airflow operator execution with marts, and CLI runner execution with reports.
 - **Verification Status**: 647/647 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 25 - 2026-11-05
+- **Milestone Completed**: Cloud SQL to BigQuery replication setup via BigQuery external/federated queries.
+- **Key Changes Implemented**:
+  - Built BigQuery Cloud SQL External Connection & IAM Infrastructure in Terraform (`terraform/modules/bigquery/`):
+    - `google_bigquery_connection.cloudsql_connection`: Cloud SQL external connection (`conn_cloudsql_risk_db_${env}`) configured with PostgreSQL type, Private IP instance connection name, credentials, and regional deployment (`us-central1`).
+    - `google_project_iam_member.bigquery_cloudsql_client`: Grants `roles/cloudsql.client` to the BigQuery connection service account (`cloud_resource.service_account_id`).
+    - `google_bigquery_table` resources for federated views: `v_federated_risk_alerts` and `v_federated_portfolio_limits` executing BigQuery `EXTERNAL_QUERY`.
+    - Declared variables for Cloud SQL instance connection, database name, user, and password, and exported outputs (`cloudsql_connection_id`, `v_federated_risk_alerts_id`, `v_federated_portfolio_limits_id`, `federated_views`).
+    - Wired Cloud SQL module outputs into root `terraform/main.tf` and exported root outputs `bigquery_cloudsql_connection_id` and `bigquery_federated_views` in `terraform/outputs.tf`.
+  - Authored GoogleSQL DDL Scripts & JSON Schemas (`dwh/bigquery/ddl/`, `dwh/bigquery/schemas/`):
+    - `v_federated_risk_alerts.sql`: Federated view querying Cloud SQL `risk_alerts` table via `EXTERNAL_QUERY`, casting PostgreSQL UUID and timestamp types, and filtering for operational risk monitoring.
+    - `v_federated_portfolio_limits.sql`: Federated view querying Cloud SQL `portfolio_limits` table via `EXTERNAL_QUERY`, providing live mandate thresholds and active status.
+    - `all_federated_views.sql`: Master deployment DDL compiling and creating both federated views.
+    - JSON schemas declared in `dwh/bigquery/schemas/` and `terraform/modules/bigquery/schemas/`.
+    - Catalog specifications added to `dwh/bigquery/config.py` (`FEDERATED_VIEWS_CATALOG`, `V_FEDERATED_RISK_ALERTS_SPEC`, `V_FEDERATED_PORTFOLIO_LIMITS_SPEC`, `BigQueryConnectionConfig`).
+    - Schema manager validation utilities in `dwh/bigquery/schema_manager.py` (`validate_federated_views_catalog`, `render_federated_views_ddl`).
+  - Implemented Zero-Cost Local BigQuery Emulator Federation (`dwh/bigquery/emulator.py`):
+    - Added `_translate_external_query` converting BigQuery `EXTERNAL_QUERY("conn", "SELECT ...")` calls into DuckDB standard derived subqueries with PostgreSQL type-cast translation (`::text`, `::numeric`, `::jsonb`).
+    - Added `initialize_cloudsql_tables` and `seed_cloudsql_tables` for zero-cost hermetic in-memory simulation of operational Cloud SQL tables in DuckDB.
+    - Added `translate_federated_view_ddl_to_duckdb`, `create_federated_view_from_ddl`, and `initialize_federated_views` allowing local querying of federated operational data.
+  - Built Production Cloud SQL to BigQuery Replication Engine (`dwh/bigquery/replication.py`):
+    - `ReplicationMode`: Enum supporting `SNAPSHOT` (complete dimensional replacement) and `INCREMENTAL` (watermark-driven delta replication).
+    - `TableReplicationSpec`: Declarative specification of source/target tables, primary keys, watermark columns, replication modes, and custom pushdown queries.
+    - `REPLICATION_CATALOG`: Declarative registry mapping `portfolio_limits` (SNAPSHOT mode) and `risk_alerts` (INCREMENTAL mode into `fact_risk_alerts`).
+    - `ReplicationWatermarkStore`: High-watermark state tracking (`get_watermark`, `update_watermark`) ensuring zero duplicate rows and exactly-once / at-least-once consistency across replication runs.
+    - `CloudSqlBigQueryReplicationRunner`: High-performance replication executor supporting pushdown queries, batch extraction, idempotent BigQuery `MERGE` statements, automated retry with exponential backoff, and end-to-end multi-table synchronization (`replicate_all`).
+    - `ReplicationTelemetry`: Real-time operational telemetry tracking sync count, records replicated, bytes scanned, sync durations, and Prometheus text exposition formatting (`bigquery_replication_syncs_executed_total`, `bigquery_replication_records_synced_total`, etc.).
+  - Built Replication CLI Runner (`dwh/bigquery/replication_cli.py`):
+    - Standalone automation tool supporting `--dry-run`, `--sync-all`, `--table <name>`, `--seed-mock-data`, `--target-date`, `--json-report`, and `--export-prometheus`.
+  - Integrated Cloud Composer Airflow Operator & Master Lakehouse DAG (`orchestration/airflow/`):
+    - Added `CloudSqlToBigQueryFederationOperator` to `orchestration/airflow/airflow_compat.py` with recursive Jinja parameter rendering (`{{ ds }}`), connection mapping, automated retries (3 retries, exponential backoff), and rich alert callbacks.
+    - Integrated `replicate_cloudsql_operational_data` task into `bigquery_dwh_publication` TaskGroup in `orchestration/airflow/dags/trading_risk_daily_batch_dag.py`, executing replication before BigQuery partition refresh and dbt model execution.
+  - Comprehensive Zero-Cost Test Suite (`tests/test_cloudsql_bigquery_federation.py`):
+    - 29 new unit and integration tests verifying Terraform federation resources/wiring, balanced braces, JSON schema and DDL parity, DuckDB EXTERNAL_QUERY translation, federated view queries, snapshot/incremental replication, idempotent MERGE logic, watermark store persistence, Prometheus metrics exposition, Airflow operator execution with Jinja templating, master DAG topological acyclicity, CLI runner modes, and downstream analytical accessibility.
+- **Verification Status**: 676/676 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 25 - 2026-11-05
+- **Milestone Completed**: Cloud SQL to BigQuery replication setup via BigQuery external/federated queries.
+- **Key Changes Implemented**:
+  - Built BigQuery Cloud SQL External Connection in Terraform (`terraform/modules/bigquery/`):
+    - `google_bigquery_connection.cloudsql_connection`: Connection resource configured with `cloud_sql` block connecting to Cloud SQL PostgreSQL instance (`trading-risk-db-${var.environment}`) with secure credentials.
+    - `google_project_iam_member.bigquery_cloudsql_client`: Least-privilege IAM role binding granting `roles/cloudsql.client` to the connection service account (`cloud_sql[0].service_account_id`).
+    - Configured input variables (`enable_cloudsql_federation`, `cloudsql_connection_id`, `cloudsql_instance_connection_name`, `cloudsql_database_name`, `cloudsql_user`, `cloudsql_password`), outputs (`cloudsql_connection_id`, `cloudsql_connection_name`, `cloudsql_connection_service_account`, `federated_view_ids`), and wired into root `terraform/main.tf` and `terraform/outputs.tf`.
+  - Authored production GoogleSQL federated views & JSON schemas (`dwh/bigquery/` & `terraform/modules/bigquery/`):
+    - `v_federated_risk_alerts`: Real-time federated view querying operational `risk_alerts` table via `EXTERNAL_QUERY`.
+    - `v_federated_portfolio_limits`: Real-time federated view querying operational `portfolio_limits` table via `EXTERNAL_QUERY`.
+    - Master DDL deployment script `all_federated_views.sql`.
+    - Declared JSON schemas in `schemas/` and catalog specifications in `dwh/bigquery/config.py` (`FEDERATED_VIEWS_CATALOG`).
+    - Added Terraform view resources `google_bigquery_table.v_federated_risk_alerts` and `google_bigquery_table.v_federated_portfolio_limits` with `use_legacy_sql = false`.
+  - Extended Local BigQuery Emulator (`dwh/bigquery/emulator.py`):
+    - Added `initialize_cloudsql_tables()` deploying in-memory Cloud SQL tables (`risk_alerts`, `portfolio_limits`) in DuckDB for zero-cost hermetic local testing.
+    - Implemented `_translate_external_query()` parsing GoogleSQL `EXTERNAL_QUERY(connection_id, query)` and converting into standard SQL subqueries with automatic PostgreSQL cast aliasing (`::VARCHAR AS col`, `::DECIMAL(18, 4) AS col`).
+    - Added `translate_federated_view_ddl_to_duckdb()`, `create_federated_view_from_ddl()`, and `initialize_federated_views()`.
+    - Updated `execute_query` and `execute_query_arrow` to transparently execute federated queries and return PyArrow tables.
+  - Implemented Enterprise Replication Engine (`dwh/bigquery/replication.py`):
+    - `ReplicationMode`: `INCREMENTAL_WATERMARK` (watermark-based pushdown and MERGE) and `SNAPSHOT_REPLACE` (full reference table MERGE).
+    - `REPLICATION_CATALOG`: Canonical replication specifications for `risk_alerts -> fact_risk_alerts` and `portfolio_limits -> dim_portfolios`.
+    - `ReplicationWatermarkStore`: Thread-safe high-watermark state tracking per table with reset support.
+    - `CloudSqlBigQueryReplicationRunner`: Builds pushdown queries with predicate pushdown (`WHERE event_timestamp > watermark`), generates idempotent `MERGE INTO` statements, coordinates sync execution, manages retries, and records operational metrics.
+    - `ReplicationTelemetry`: Operational telemetry tracking syncs, durations, and bytes transferred with Prometheus exposition (`bigquery_replication_syncs_executed_total`, `bigquery_replication_records_synced_total`, etc.).
+  - Built Standalone Replication CLI Runner (`dwh/bigquery/replication_cli.py`):
+    - Production CLI supporting `--sync-all`, `--table`, `--date`, `--full-refresh`, `--dry-run`, `--seed-mock-data`, `--json-report`, and `--export-prometheus`.
+  - Integrated with Cloud Composer Airflow Master Batch DAG:
+    - Added `CloudSqlToBigQueryFederationOperator` to `orchestration/airflow/airflow_compat.py` supporting Jinja templated execution date `{{ ds }}` and failure injection.
+    - Upgraded master lakehouse DAG (`orchestration/airflow/dags/trading_risk_daily_batch_dag.py`): added `replicate_cloudsql_operational_data` inside `dwh_group` scheduled with partition refresh before dbt transformation models (`[refresh_bigquery, replicate_cloudsql] >> run_dbt >> test_dbt`).
+  - Exported symbols in `dwh/__init__.py`, `dwh/bigquery/__init__.py`, and `orchestration/airflow/__init__.py`.
+  - Authored zero-cost unit and integration test suite in `tests/test_cloudsql_bigquery_federation.py`:
+    - 29 new tests validating Terraform HCL syntax, balanced braces, root wiring, JSON schemas, GoogleSQL DDL, DuckDB federated query execution, Arrow table conversion, incremental watermark sync, snapshot replacement, idempotency (zero duplicates on re-runs), retry policies, telemetry, Airflow operator execution, master DAG acyclicity, CLI runner modes, and downstream dbt model integration.
+- **Verification Status**: 676/676 tests passed cleanly (`python -m pytest tests/ -v`).
+

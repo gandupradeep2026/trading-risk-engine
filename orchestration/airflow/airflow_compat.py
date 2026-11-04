@@ -1257,6 +1257,90 @@ class BigQueryInsertJobOperator(BaseOperator):
         return actual_job_id
 
 
+class CloudSqlToBigQueryFederationOperator(BaseOperator):
+    """Pure-Python operator for Cloud SQL to BigQuery replication via federated queries (Day 25).
+
+    Executes scheduled incremental or full synchronization from operational Cloud SQL
+    PostgreSQL into BigQuery star-schema fact and dimension tables using EXTERNAL_QUERY.
+    """
+
+    template_fields: Tuple[str, ...] = ("tables", "target_date", "connection_id")
+
+    def __init__(
+        self,
+        task_id: str,
+        tables: Union[str, List[str]] = "all",
+        target_date: Optional[str] = "{{ ds }}",
+        connection_id: Optional[str] = None,
+        full_refresh: bool = False,
+        project_id: Optional[str] = None,
+        dataset_id: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(task_id=task_id, **kwargs)
+        self.tables = tables
+        self.target_date = target_date
+        self.connection_id = connection_id
+        self.full_refresh = full_refresh
+        self.project_id = project_id
+        self.dataset_id = dataset_id
+
+    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute Cloud SQL to BigQuery federated replication."""
+        attempt = BigQueryJobRegistry.record_task_attempt(self.task_id)
+
+        # Failure injection check
+        should_fail, err = BigQueryJobRegistry.should_fail_attempt(self.task_id)
+        if should_fail and err:
+            raise err
+
+        rendered_date = _render_jinja_string(self.target_date, context) if self.target_date else None
+        rendered_tables = _render_templates_in_obj(self.tables, context)
+
+        from dwh.bigquery.emulator import LocalBigQueryEmulator
+        from dwh.bigquery.replication import CloudSqlBigQueryReplicationRunner, ReplicationConfig
+
+        cfg = ReplicationConfig.from_env()
+        if self.project_id:
+            cfg.project_id = self.project_id
+        if self.dataset_id:
+            cfg.dataset_id = self.dataset_id
+        if self.connection_id:
+            cfg.connection_id = self.connection_id
+
+        emulator = LocalBigQueryEmulator(project_id=cfg.project_id, dataset_id=cfg.dataset_id)
+        emulator.initialize_star_schema()
+        emulator.load_seed_dimensions()
+        emulator.initialize_cloudsql_tables()
+
+        runner = CloudSqlBigQueryReplicationRunner(emulator=emulator, config=cfg)
+        runner.seed_mock_cloudsql_data()
+
+        if rendered_tables == "all" or (isinstance(rendered_tables, (list, tuple)) and "all" in rendered_tables):
+            results = runner.replicate_all(target_date=rendered_date, full_refresh=self.full_refresh)
+        elif isinstance(rendered_tables, str):
+            res = runner.replicate_table(rendered_tables, target_date=rendered_date, full_refresh=self.full_refresh)
+            results = {"status": res.get("status", "SUCCESS"), "tables": {rendered_tables: res}, "total_rows_synced": res.get("rows_synced", 0)}
+        elif isinstance(rendered_tables, (list, tuple)):
+            table_res = {}
+            for t in rendered_tables:
+                table_res[t] = runner.replicate_table(t, target_date=rendered_date, full_refresh=self.full_refresh)
+            results = {"status": "SUCCESS", "tables": table_res, "total_rows_synced": sum(r.get("rows_synced", 0) for r in table_res.values())}
+        else:
+            results = runner.replicate_all(target_date=rendered_date, full_refresh=self.full_refresh)
+
+        record = {
+            "task_id": self.task_id,
+            "attempt": attempt,
+            "target_date": rendered_date,
+            "results": results,
+            "status": "SUCCESS",
+        }
+        BigQueryJobRegistry.record_job(f"repl_{self.task_id}_{attempt}", record)
+        return results
+
+
+
 class DbtExecutionRegistry:
     """Thread-safe registry tracking dbt execution runs and failure simulation."""
 

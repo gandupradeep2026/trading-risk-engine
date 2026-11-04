@@ -244,3 +244,74 @@ resource "google_bigquery_table" "mv_realtime_risk_alerts" {
 
   depends_on = [google_bigquery_table.fact_risk_alerts]
 }
+
+# -----------------------------------------------------------------------------
+# 5. BIGQUERY CLOUD SQL EXTERNAL CONNECTION & IAM (DAY 25)
+# -----------------------------------------------------------------------------
+resource "google_bigquery_connection" "cloudsql_connection" {
+  count         = var.enable_cloudsql_federation ? 1 : 0
+  connection_id = var.cloudsql_connection_id != null ? var.cloudsql_connection_id : "conn_cloudsql_risk_db_${var.environment}"
+  project       = var.project_id
+  location      = var.region
+  friendly_name = "Cloud SQL PostgreSQL Connection for Federated Queries (${var.environment})"
+  description   = "External federated query connection from BigQuery to Cloud SQL PostgreSQL operational risk database."
+
+  cloud_sql {
+    instance_id = var.cloudsql_instance_connection_name
+    database    = var.cloudsql_database_name
+    type        = "POSTGRES"
+    credential {
+      username = var.cloudsql_user
+      password = var.cloudsql_password
+    }
+  }
+}
+
+resource "google_project_iam_member" "bigquery_cloudsql_client" {
+  count   = var.enable_cloudsql_federation && var.cloudsql_instance_connection_name != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_bigquery_connection.cloudsql_connection[0].cloud_sql[0].service_account_id}"
+}
+
+# -----------------------------------------------------------------------------
+# 6. BIGQUERY FEDERATED VIEWS OVER CLOUD SQL (DAY 25)
+# -----------------------------------------------------------------------------
+resource "google_bigquery_table" "v_federated_risk_alerts" {
+  count               = var.enable_cloudsql_federation ? 1 : 0
+  dataset_id          = google_bigquery_dataset.dwh_dataset.dataset_id
+  table_id            = "v_federated_risk_alerts"
+  project             = var.project_id
+  description         = "Real-time federated view querying operational risk_alerts from Cloud SQL via BigQuery external query connection."
+  deletion_protection = !var.delete_contents_on_destroy
+
+  view {
+    query          = "SELECT alert_id, portfolio_id, ticker, asset_class, alert_type, severity, metric_name, threshold_value, observed_value, event_timestamp, created_at, status, payload_json FROM EXTERNAL_QUERY(\"${var.project_id}.${var.region}.${var.cloudsql_connection_id != null ? var.cloudsql_connection_id : "conn_cloudsql_risk_db_${var.environment}"}\", \"SELECT alert_id::text AS alert_id, portfolio_id, ticker, asset_class, alert_type, severity, metric_name, threshold_value::numeric AS threshold_value, observed_value::numeric AS observed_value, event_timestamp, created_at, status, payload_json::text AS payload_json FROM risk_alerts\")"
+    use_legacy_sql = false
+  }
+
+  schema = file("${path.module}/schemas/v_federated_risk_alerts.json")
+  labels = local.common_labels
+
+  depends_on = [google_bigquery_connection.cloudsql_connection]
+}
+
+resource "google_bigquery_table" "v_federated_portfolio_limits" {
+  count               = var.enable_cloudsql_federation ? 1 : 0
+  dataset_id          = google_bigquery_dataset.dwh_dataset.dataset_id
+  table_id            = "v_federated_portfolio_limits"
+  project             = var.project_id
+  description         = "Real-time federated view querying operational portfolio_limits from Cloud SQL via BigQuery external query connection."
+  deletion_protection = !var.delete_contents_on_destroy
+
+  view {
+    query          = "SELECT limit_id, portfolio_id, asset_class, max_notional_usd, max_drawdown_pct, max_var_99_usd, is_active, updated_at FROM EXTERNAL_QUERY(\"${var.project_id}.${var.region}.${var.cloudsql_connection_id != null ? var.cloudsql_connection_id : "conn_cloudsql_risk_db_${var.environment}"}\", \"SELECT limit_id::text AS limit_id, portfolio_id, asset_class, max_notional_usd::numeric AS max_notional_usd, max_drawdown_pct::numeric AS max_drawdown_pct, max_var_99_usd::numeric AS max_var_99_usd, is_active, updated_at FROM portfolio_limits\")"
+    use_legacy_sql = false
+  }
+
+  schema = file("${path.module}/schemas/v_federated_portfolio_limits.json")
+  labels = local.common_labels
+
+  depends_on = [google_bigquery_connection.cloudsql_connection]
+}
+

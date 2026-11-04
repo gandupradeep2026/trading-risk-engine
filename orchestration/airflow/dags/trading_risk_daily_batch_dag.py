@@ -40,6 +40,7 @@ try:
         GreatExpectationsOperator,
     )
     from orchestration.airflow.airflow_compat import (
+        CloudSqlToBigQueryFederationOperator,
         DbtRunOperator,
         DbtTestOperator,
     )
@@ -47,6 +48,7 @@ except (ImportError, ModuleNotFoundError):
     from orchestration.airflow.airflow_compat import (
         DAG,
         BigQueryInsertJobOperator,
+        CloudSqlToBigQueryFederationOperator,
         DatabricksRunNowOperator,
         DatabricksSubmitRunOperator,
         DataprocCreateClusterOperator,
@@ -292,9 +294,22 @@ def build_trading_risk_dag(
             validate_silver_suite >> validate_gold_suite >> publish_data_docs
 
         # ---------------------------------------------------------------------
-        # TaskGroup: BigQuery Enterprise Data Warehouse & dbt (Days 22-24)
+        # TaskGroup: BigQuery Enterprise Data Warehouse & dbt (Days 22-25)
         # ---------------------------------------------------------------------
         with TaskGroup("bigquery_dwh_publication", tooltip="BigQuery partitioned tables & dbt models") as dwh_group:
+            replicate_cloudsql = CloudSqlToBigQueryFederationOperator(
+                task_id="replicate_cloudsql_operational_data",
+                tables="all",
+                target_date="{{ ds }}",
+                connection_id=f"conn_cloudsql_risk_db_{cfg.environment}",
+                retries=3,
+                retry_delay=timedelta(seconds=60),
+                retry_exponential_backoff=True,
+                max_retry_delay=timedelta(seconds=300),
+                on_retry_callback=create_retry_callback(),
+                on_failure_callback=create_failure_callback(),
+                doc_md="Replicates operational risk alerts and mandate limits from Cloud SQL to BigQuery via federated queries.",
+            )
             refresh_bigquery = BigQueryInsertJobOperator(
                 task_id="refresh_bigquery_partitions",
                 configuration={
@@ -342,7 +357,11 @@ def build_trading_risk_dag(
                 on_failure_callback=create_failure_callback(),
                 doc_md="Evaluates dbt schema tests (unique, not_null, accepted_values, relationships).",
             )
-            refresh_bigquery >> run_dbt >> test_dbt
+            replicate_cloudsql >> refresh_bigquery
+            refresh_bigquery >> run_dbt
+            replicate_cloudsql >> run_dbt
+            run_dbt >> test_dbt
+
 
         publish_risk_report = EmptyOperator(
             task_id="publish_risk_report",
@@ -356,6 +375,7 @@ def build_trading_risk_dag(
 
         # Connect end-to-end linear and grouped dependencies
         start_pipeline >> verify_bronze_partitions >> dataproc_group >> databricks_group >> dq_group >> dwh_group >> publish_risk_report >> end_pipeline
+        publish_data_docs >> refresh_bigquery
 
     return dag
 

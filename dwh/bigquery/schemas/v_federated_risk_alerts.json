@@ -1,0 +1,80 @@
+[
+  {
+    "name": "alert_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Unique UUID primary key of the operational risk alert"
+  },
+  {
+    "name": "portfolio_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Trading portfolio book identifier"
+  },
+  {
+    "name": "ticker",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Financial instrument ticker symbol"
+  },
+  {
+    "name": "asset_class",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Asset class classification (EQUITY, FX, COMMODITY, CRYPTO, ETF)"
+  },
+  {
+    "name": "alert_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Risk alert category (e.g. FLASH_CRASH_DRAWDOWN, SINGLE_ORDER_FAT_FINGER)"
+  },
+  {
+    "name": "severity",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Alert severity level: LOW, MEDIUM, HIGH, CRITICAL"
+  },
+  {
+    "name": "metric_name",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Quantitative metric evaluated during anomaly detection"
+  },
+  {
+    "name": "threshold_value",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Configured threshold value that was breached"
+  },
+  {
+    "name": "observed_value",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Empirical value observed during evaluation"
+  },
+  {
+    "name": "event_timestamp",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Timestamp of underlying trigger market event"
+  },
+  {
+    "name": "created_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Timestamp when alert record was written to Cloud SQL"
+  },
+  {
+    "name": "status",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Operational alert resolution status (ACTIVE, ACKNOWLEDGED, RESOLVED, DISMISSED)"
+  },
+  {
+    "name": "payload_json",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Diagnostic JSON payload string with contextual parameters"
+  }
+]

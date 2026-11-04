@@ -1,0 +1,50 @@
+[
+  {
+    "name": "limit_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Unique UUID primary key of the portfolio mandate limit"
+  },
+  {
+    "name": "portfolio_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Trading portfolio book identifier"
+  },
+  {
+    "name": "asset_class",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Asset class mandate scope"
+  },
+  {
+    "name": "max_notional_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Maximum permitted gross notional exposure in USD"
+  },
+  {
+    "name": "max_drawdown_pct",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Maximum tolerable drawdown percentage (e.g. 0.0500 for 5%)"
+  },
+  {
+    "name": "max_var_99_usd",
+    "type": "NUMERIC",
+    "mode": "REQUIRED",
+    "description": "Maximum 99% 1-day Value-at-Risk limit in USD"
+  },
+  {
+    "name": "is_active",
+    "type": "BOOL",
+    "mode": "REQUIRED",
+    "description": "Whether this portfolio risk limit policy is actively enforced"
+  },
+  {
+    "name": "updated_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "Timestamp when limit configuration was last updated in Cloud SQL"
+  }
+]

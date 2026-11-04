@@ -74,3 +74,44 @@ variable "mv_refresh_interval_ms" {
   type        = number
   default     = 900000
 }
+
+# -----------------------------------------------------------------------------
+# Cloud SQL Federated Query Connection Variables (Day 25)
+# -----------------------------------------------------------------------------
+variable "enable_cloudsql_federation" {
+  description = "Enable BigQuery external connection and federated views to Cloud SQL PostgreSQL"
+  type        = bool
+  default     = true
+}
+
+variable "cloudsql_connection_id" {
+  description = "Connection ID for the BigQuery Cloud SQL external connection (defaults to conn_cloudsql_risk_db_<environment> if null)"
+  type        = string
+  default     = null
+}
+
+variable "cloudsql_instance_connection_name" {
+  description = "Connection name of the Cloud SQL PostgreSQL instance (project:region:instance)"
+  type        = string
+  default     = ""
+}
+
+variable "cloudsql_database_name" {
+  description = "Name of the Cloud SQL database for federated queries"
+  type        = string
+  default     = "trading_risk_db"
+}
+
+variable "cloudsql_user" {
+  description = "Database user for BigQuery federated query authentication"
+  type        = string
+  default     = "risk_app_user"
+}
+
+variable "cloudsql_password" {
+  description = "Database password for BigQuery federated query authentication"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+

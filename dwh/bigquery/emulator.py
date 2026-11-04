@@ -9,7 +9,7 @@ full star-schema analytical queries and telemetry tracking.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import decimal
 import json
 import re
@@ -21,6 +21,7 @@ import duckdb
 import pyarrow as pa
 
 from dwh.bigquery.config import (
+    FEDERATED_VIEWS_CATALOG,
     MATERIALIZED_VIEWS_CATALOG,
     STAR_SCHEMA_CATALOG,
     TablePartitionClusteringSpec,
@@ -127,6 +128,26 @@ def _strip_options_clauses(text: str) -> str:
     return "".join(result)
 
 
+def _translate_external_query(sql: str) -> str:
+    """Translate GoogleSQL EXTERNAL_QUERY("connection", "subquery") to standard SQL subquery."""
+    pattern = r'EXTERNAL_QUERY\s*\(\s*[^,]+\s*,\s*(?:"""([\s\S]*?)"""|\'\'\'([\s\S]*?)\'\'\'|"([^"]*)"|\'([^\']*)\')\s*\)'
+
+    def _replace_match(m: re.Match) -> str:
+        inner_sql = m.group(1) or m.group(2) or m.group(3) or m.group(4) or ""
+        # Auto alias any col::type that does not have an AS alias
+        inner_sql = re.sub(r'(\b\w+)::(?:text|varchar)\b(?!\s+AS\b)', r'\1::VARCHAR AS \1', inner_sql, flags=re.IGNORECASE)
+        inner_sql = re.sub(r'(\b\w+)::numeric\b(?!\s+AS\b)', r'\1::DECIMAL(18, 4) AS \1', inner_sql, flags=re.IGNORECASE)
+        inner_sql = re.sub(r'(\b\w+)::jsonb\b(?!\s+AS\b)', r'\1::VARCHAR AS \1', inner_sql, flags=re.IGNORECASE)
+        # Any remaining casts with AS alias
+        inner_sql = re.sub(r"::text\b", "::VARCHAR", inner_sql, flags=re.IGNORECASE)
+        inner_sql = re.sub(r"::numeric\b", "::DECIMAL(18, 4)", inner_sql, flags=re.IGNORECASE)
+        inner_sql = re.sub(r"::jsonb\b", "::VARCHAR", inner_sql, flags=re.IGNORECASE)
+        return f"({inner_sql.strip()})"
+
+    return re.sub(pattern, _replace_match, sql, flags=re.IGNORECASE)
+
+
+
 class LocalBigQueryEmulator:
     """In-memory DuckDB-backed Google Cloud BigQuery emulator."""
 
@@ -144,11 +165,16 @@ class LocalBigQueryEmulator:
         self.telemetry = BigQueryTelemetry()
         self.table_specs: Dict[str, TablePartitionClusteringSpec] = dict(STAR_SCHEMA_CATALOG)
         self.table_specs.update(MATERIALIZED_VIEWS_CATALOG)
+        self.table_specs.update(FEDERATED_VIEWS_CATALOG)
         self._lock = threading.Lock()
 
         # Initialize dataset schema in DuckDB
         self.connection.execute(f"CREATE SCHEMA IF NOT EXISTS {self.dataset_id};")
         self.connection.execute(f"SET schema = '{self.dataset_id}';")
+
+        # Initialize Cloud SQL operational tables for federated query emulation
+        self.initialize_cloudsql_tables()
+
 
     def translate_bigquery_ddl_to_duckdb(self, bq_ddl: str) -> str:
         """Translate GoogleSQL BigQuery DDL statement into DuckDB compatible SQL."""
@@ -256,6 +282,169 @@ class LocalBigQueryEmulator:
         for mv in views:
             self.create_materialized_view_from_ddl(mv)
 
+    def initialize_cloudsql_tables(self) -> None:
+        """Initialize operational Cloud SQL PostgreSQL tables in DuckDB for zero-cost federated queries."""
+        ddl_risk_alerts = f"""
+        CREATE TABLE IF NOT EXISTS {self.dataset_id}.risk_alerts (
+            alert_id VARCHAR PRIMARY KEY,
+            portfolio_id VARCHAR NOT NULL,
+            ticker VARCHAR NOT NULL,
+            asset_class VARCHAR NOT NULL,
+            alert_type VARCHAR NOT NULL,
+            severity VARCHAR NOT NULL,
+            metric_name VARCHAR NOT NULL,
+            threshold_value DECIMAL(18, 6) NOT NULL,
+            observed_value DECIMAL(18, 6) NOT NULL,
+            event_timestamp TIMESTAMPTZ NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL,
+            status VARCHAR NOT NULL DEFAULT 'ACTIVE',
+            payload_json VARCHAR DEFAULT '{{}}'
+        );
+        """
+        ddl_portfolio_limits = f"""
+        CREATE TABLE IF NOT EXISTS {self.dataset_id}.portfolio_limits (
+            limit_id VARCHAR PRIMARY KEY,
+            portfolio_id VARCHAR NOT NULL UNIQUE,
+            asset_class VARCHAR NOT NULL,
+            max_notional_usd DECIMAL(18, 2) NOT NULL,
+            max_drawdown_pct DECIMAL(6, 4) NOT NULL,
+            max_var_99_usd DECIMAL(18, 2) NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            updated_at TIMESTAMPTZ NOT NULL
+        );
+        """
+        with self._lock:
+            self.connection.execute(ddl_risk_alerts)
+            self.connection.execute(ddl_portfolio_limits)
+
+    def seed_cloudsql_tables(
+        self,
+        risk_alerts: Optional[List[Dict[str, Any]]] = None,
+        portfolio_limits: Optional[List[Dict[str, Any]]] = None,
+        alerts_count: int = 25,
+    ) -> Dict[str, int]:
+        """Seed Cloud SQL operational tables with sample records for federated query execution."""
+        counts = {}
+        if risk_alerts is not None:
+            self.insert_rows("risk_alerts", risk_alerts)
+            counts["risk_alerts"] = len(risk_alerts)
+        else:
+            from dwh.bigquery.seed_data import generate_mock_risk_alerts
+            sample_alerts = generate_mock_risk_alerts(count=alerts_count)
+            csql_alerts = []
+            for a in sample_alerts:
+                csql_alerts.append({
+                    "alert_id": a["alert_id"],
+                    "portfolio_id": a["portfolio_id"],
+                    "ticker": a.get("ticker", "AAPL"),
+                    "asset_class": a.get("asset_class", "EQUITY"),
+                    "alert_type": a["alert_type"],
+                    "severity": a["severity"],
+                    "metric_name": a["metric_name"],
+                    "threshold_value": a["threshold_value"],
+                    "observed_value": a["observed_value"],
+                    "event_timestamp": a["event_timestamp"],
+                    "created_at": a.get("detected_at", a["event_timestamp"]),
+                    "status": "ACTIVE",
+                    "payload_json": a.get("payload_json", "{}"),
+                })
+            self.insert_rows("risk_alerts", csql_alerts)
+            counts["risk_alerts"] = len(csql_alerts)
+
+        if portfolio_limits is not None:
+            self.insert_rows("portfolio_limits", portfolio_limits)
+            counts["portfolio_limits"] = len(portfolio_limits)
+        else:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            limits = [
+                {
+                    "limit_id": "lim-001",
+                    "portfolio_id": "PORTFOLIO_ALPHA",
+                    "asset_class": "EQUITY",
+                    "max_notional_usd": 10000000.0,
+                    "max_drawdown_pct": 0.05,
+                    "max_var_99_usd": 250000.0,
+                    "is_active": True,
+                    "updated_at": now_iso,
+                },
+                {
+                    "limit_id": "lim-002",
+                    "portfolio_id": "PORTFOLIO_BETA",
+                    "asset_class": "FX",
+                    "max_notional_usd": 25000000.0,
+                    "max_drawdown_pct": 0.03,
+                    "max_var_99_usd": 400000.0,
+                    "is_active": True,
+                    "updated_at": now_iso,
+                },
+                {
+                    "limit_id": "lim-003",
+                    "portfolio_id": "PORTFOLIO_GAMMA",
+                    "asset_class": "CRYPTO",
+                    "max_notional_usd": 5000000.0,
+                    "max_drawdown_pct": 0.10,
+                    "max_var_99_usd": 500000.0,
+                    "is_active": True,
+                    "updated_at": now_iso,
+                },
+            ]
+            self.insert_rows("portfolio_limits", limits)
+            counts["portfolio_limits"] = len(limits)
+
+        return counts
+
+    def translate_federated_view_ddl_to_duckdb(
+        self,
+        bq_ddl: str,
+        region: str = "us-central1",
+        connection_id: str = "conn_cloudsql_risk_db_dev",
+    ) -> str:
+        """Translate GoogleSQL federated view DDL using EXTERNAL_QUERY into DuckDB view."""
+        sql = re.sub(r"--.*", "", bq_ddl)
+        sql = sql.replace("${project_id}", self.project_id)
+        sql = sql.replace("${dataset_id}", self.dataset_id)
+        sql = sql.replace("${region}", region)
+        sql = sql.replace("${connection_id}", connection_id)
+        sql = sql.replace(f"`{self.project_id}.{self.dataset_id}.", f"{self.dataset_id}.")
+        sql = sql.replace(f"`{self.project_id}.{self.dataset_id}", f"{self.dataset_id}")
+        sql = sql.replace("`", "")
+
+        # Strip OPTIONS(...)
+        sql = _strip_options_clauses(sql)
+
+        # Translate EXTERNAL_QUERY
+        sql = _translate_external_query(sql)
+
+        # Replace CREATE VIEW with CREATE OR REPLACE VIEW
+        sql = re.sub(r"CREATE\s+VIEW(?:\s+IF\s+NOT\s+EXISTS)?\s+", "CREATE OR REPLACE VIEW ", sql, flags=re.IGNORECASE)
+        sql = re.sub(r"CREATE\s+OR\s+REPLACE\s+VIEW\s+", "CREATE OR REPLACE VIEW ", sql, flags=re.IGNORECASE)
+
+        return sql.strip()
+
+    def create_federated_view_from_ddl(
+        self,
+        view_name: str,
+        region: str = "us-central1",
+        connection_id: str = "conn_cloudsql_risk_db_dev",
+    ) -> None:
+        """Deploy a federated view in DuckDB from rendered GoogleSQL DDL."""
+        raw_ddl = self.schema_manager.load_raw_ddl(view_name)
+        duck_sql = self.translate_federated_view_ddl_to_duckdb(
+            raw_ddl, region=region, connection_id=connection_id
+        )
+        with self._lock:
+            self.connection.execute(duck_sql)
+
+    def initialize_federated_views(
+        self,
+        region: str = "us-central1",
+        connection_id: str = "conn_cloudsql_risk_db_dev",
+    ) -> None:
+        """Deploy all BigQuery federated views over Cloud SQL."""
+        for v in ["v_federated_risk_alerts", "v_federated_portfolio_limits"]:
+            self.create_federated_view_from_ddl(v, region=region, connection_id=connection_id)
+
+
     def load_seed_dimensions(
         self,
         date_start: date = date(2026, 1, 1),
@@ -351,6 +540,7 @@ class LocalBigQueryEmulator:
         clean_q = query.replace(f"`{self.project_id}.{self.dataset_id}.", f"{self.dataset_id}.")
         clean_q = clean_q.replace(f"{self.project_id}.{self.dataset_id}.", f"{self.dataset_id}.")
         clean_q = clean_q.replace("`", "")
+        clean_q = _translate_external_query(clean_q)
 
         t0 = time.perf_counter()
         success = False
@@ -360,8 +550,12 @@ class LocalBigQueryEmulator:
                     rel = self.connection.execute(clean_q, parameters)
                 else:
                     rel = self.connection.execute(clean_q)
-                columns = [desc[0] for desc in rel.description]
-                rows = rel.fetchall()
+                if rel.description:
+                    columns = [desc[0] for desc in rel.description]
+                    rows = rel.fetchall()
+                else:
+                    columns = []
+                    rows = []
             success = True
             result = [dict(zip(columns, r)) for r in rows]
             # Simulated byte scan estimation
@@ -381,6 +575,8 @@ class LocalBigQueryEmulator:
         clean_q = query.replace(f"`{self.project_id}.{self.dataset_id}.", f"{self.dataset_id}.")
         clean_q = clean_q.replace(f"{self.project_id}.{self.dataset_id}.", f"{self.dataset_id}.")
         clean_q = clean_q.replace("`", "")
+        clean_q = _translate_external_query(clean_q)
+
 
         t0 = time.perf_counter()
         success = False

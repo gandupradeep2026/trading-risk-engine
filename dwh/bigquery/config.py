@@ -197,6 +197,76 @@ MATERIALIZED_VIEWS_CATALOG: Dict[str, TablePartitionClusteringSpec] = {
     ]
 }
 
+# -----------------------------------------------------------------------------
+# FEDERATED VIEWS OVER CLOUD SQL SPECS (DAY 25)
+# -----------------------------------------------------------------------------
+
+V_FEDERATED_RISK_ALERTS_SPEC = TablePartitionClusteringSpec(
+    table_name="v_federated_risk_alerts",
+    table_type="FEDERATED_VIEW",
+    require_partition_filter=False,
+    description="Real-time federated view querying operational risk_alerts from Cloud SQL PostgreSQL via BigQuery EXTERNAL_QUERY.",
+)
+
+V_FEDERATED_PORTFOLIO_LIMITS_SPEC = TablePartitionClusteringSpec(
+    table_name="v_federated_portfolio_limits",
+    table_type="FEDERATED_VIEW",
+    require_partition_filter=False,
+    description="Real-time federated view querying operational portfolio_limits from Cloud SQL PostgreSQL via BigQuery EXTERNAL_QUERY.",
+)
+
+FEDERATED_VIEWS_CATALOG: Dict[str, TablePartitionClusteringSpec] = {
+    spec.table_name: spec
+    for spec in [
+        V_FEDERATED_RISK_ALERTS_SPEC,
+        V_FEDERATED_PORTFOLIO_LIMITS_SPEC,
+    ]
+}
+
+
+class BigQueryConnectionConfig(BaseModel):
+    """Configuration for BigQuery External Connection to Cloud SQL PostgreSQL."""
+
+    connection_id: str = Field(
+        default="conn_cloudsql_risk_db_dev",
+        description="BigQuery connection resource identifier",
+    )
+    project_id: str = Field(default="trading-risk-dev-001", description="GCP project ID")
+    location: str = Field(default="us-central1", description="GCP region")
+    cloudsql_instance: str = Field(
+        default="trading-risk-dev-001:us-central1:trading-risk-db-dev",
+        description="Cloud SQL instance connection name (project:region:instance)",
+    )
+    database: str = Field(default="trading_risk_db", description="Target database name")
+    user: str = Field(default="risk_app_user", description="Database authentication user")
+    password: str = Field(default="", description="Database authentication password")
+    connection_type: str = Field(default="POSTGRES", description="Database engine type")
+
+    @classmethod
+    def from_env(cls) -> BigQueryConnectionConfig:
+        """Instantiate connection configuration from environment variables."""
+        env = os.getenv("ENVIRONMENT", "dev").lower()
+        project_id = os.getenv("GCP_PROJECT_ID", f"trading-risk-{env}-001")
+        region = os.getenv("GCP_REGION", "us-central1")
+        return cls(
+            connection_id=os.getenv("BIGQUERY_CONNECTION_ID", f"conn_cloudsql_risk_db_{env}"),
+            project_id=project_id,
+            location=region,
+            cloudsql_instance=os.getenv(
+                "CLOUDSQL_INSTANCE_CONNECTION_NAME",
+                f"{project_id}:{region}:trading-risk-db-{env}",
+            ),
+            database=os.getenv("CLOUDSQL_DATABASE_NAME", "trading_risk_db"),
+            user=os.getenv("CLOUDSQL_USER", "risk_app_user"),
+            password=os.getenv("CLOUDSQL_PASSWORD", ""),
+            connection_type="POSTGRES",
+        )
+
+    def get_full_connection_path(self) -> str:
+        """Format standard BigQuery external connection reference (project.location.connection)."""
+        return f"{self.project_id}.{self.location}.{self.connection_id}"
+
+
 
 class BigQueryDatasetConfig(BaseModel):
     """Enterprise configuration for BigQuery Data Warehouse dataset."""

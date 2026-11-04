@@ -169,7 +169,13 @@ module "bigquery" {
   require_partition_filter       = var.bigquery_require_partition_filter
   composer_service_account_email = module.composer.composer_service_account_email
   dataflow_service_account_email = module.pubsub.dataflow_service_account_email
+  cloudsql_instance_connection_name = module.cloudsql.instance_connection_name
+  cloudsql_database_name            = module.cloudsql.database_name
+  cloudsql_user                     = module.cloudsql.db_username
+  cloudsql_password                 = module.cloudsql.db_password
 }
+
+
 
 
 

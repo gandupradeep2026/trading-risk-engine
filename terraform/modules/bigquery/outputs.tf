@@ -90,3 +90,30 @@ output "materialized_view_ids" {
     mv_realtime_risk_alerts       = google_bigquery_table.mv_realtime_risk_alerts.table_id
   }
 }
+
+# -----------------------------------------------------------------------------
+# Cloud SQL External Connection Outputs (Day 25)
+# -----------------------------------------------------------------------------
+output "cloudsql_connection_id" {
+  description = "The BigQuery connection ID for Cloud SQL federated queries"
+  value       = var.enable_cloudsql_federation && length(google_bigquery_connection.cloudsql_connection) > 0 ? google_bigquery_connection.cloudsql_connection[0].connection_id : null
+}
+
+output "cloudsql_connection_name" {
+  description = "The resource name of the BigQuery Cloud SQL connection"
+  value       = var.enable_cloudsql_federation && length(google_bigquery_connection.cloudsql_connection) > 0 ? google_bigquery_connection.cloudsql_connection[0].name : null
+}
+
+output "cloudsql_connection_service_account" {
+  description = "The service account email assigned to the BigQuery Cloud SQL connection"
+  value       = var.enable_cloudsql_federation && length(google_bigquery_connection.cloudsql_connection) > 0 ? google_bigquery_connection.cloudsql_connection[0].cloud_sql[0].service_account_id : null
+}
+
+output "federated_view_ids" {
+  description = "Map of logical federated view names to BigQuery table IDs"
+  value = var.enable_cloudsql_federation ? {
+    v_federated_risk_alerts      = length(google_bigquery_table.v_federated_risk_alerts) > 0 ? google_bigquery_table.v_federated_risk_alerts[0].table_id : null
+    v_federated_portfolio_limits = length(google_bigquery_table.v_federated_portfolio_limits) > 0 ? google_bigquery_table.v_federated_portfolio_limits[0].table_id : null
+  } : {}
+}
+

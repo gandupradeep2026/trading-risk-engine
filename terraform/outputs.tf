@@ -273,3 +273,20 @@ output "bigquery_materialized_views" {
   description = "Map of BigQuery Materialized Views for real-time market performance analytics"
   value       = module.bigquery.materialized_view_ids
 }
+
+# BigQuery Cloud SQL External Federation Outputs (Day 25)
+output "bigquery_cloudsql_connection_id" {
+  description = "BigQuery external connection ID for Cloud SQL federated queries"
+  value       = module.bigquery.cloudsql_connection_id
+}
+
+output "bigquery_cloudsql_connection_service_account" {
+  description = "BigQuery external connection service account email for Cloud SQL client IAM binding"
+  value       = module.bigquery.cloudsql_connection_service_account
+}
+
+output "bigquery_federated_views" {
+  description = "Map of BigQuery federated views over Cloud SQL tables"
+  value       = module.bigquery.federated_view_ids
+}
+

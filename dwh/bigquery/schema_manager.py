@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 import pyarrow as pa
 
 from dwh.bigquery.config import (
+    FEDERATED_VIEWS_CATALOG,
     MATERIALIZED_VIEWS_CATALOG,
     STAR_SCHEMA_CATALOG,
     TablePartitionClusteringSpec,
@@ -121,12 +122,19 @@ class BigQuerySchemaManager:
         return ddl_path.read_text(encoding="utf-8")
 
     def render_ddl(
-        self, table_name: str, project_id: str, dataset_id: str
+        self,
+        table_name: str,
+        project_id: str,
+        dataset_id: str,
+        region: str = "us-central1",
+        connection_id: str = "conn_cloudsql_risk_db_dev",
     ) -> str:
-        """Render table DDL with project_id and dataset_id interpolation."""
+        """Render table DDL with project_id, dataset_id, region, and connection_id interpolation."""
         raw_ddl = self.load_raw_ddl(table_name)
         rendered = raw_ddl.replace("${project_id}", project_id)
         rendered = rendered.replace("${dataset_id}", dataset_id)
+        rendered = rendered.replace("${region}", region)
+        rendered = rendered.replace("${connection_id}", connection_id)
         return rendered
 
     def render_master_ddl(self, project_id: str, dataset_id: str) -> str:
@@ -135,6 +143,22 @@ class BigQuerySchemaManager:
         rendered = raw_ddl.replace("${project_id}", project_id)
         rendered = rendered.replace("${dataset_id}", dataset_id)
         return rendered
+
+    def render_federated_views_ddl(
+        self,
+        project_id: str,
+        dataset_id: str,
+        region: str = "us-central1",
+        connection_id: str = "conn_cloudsql_risk_db_dev",
+    ) -> str:
+        """Render master federated views DDL (all_federated_views.sql)."""
+        raw_ddl = self.load_raw_ddl("all_federated_views")
+        rendered = raw_ddl.replace("${project_id}", project_id)
+        rendered = rendered.replace("${dataset_id}", dataset_id)
+        rendered = rendered.replace("${region}", region)
+        rendered = rendered.replace("${connection_id}", connection_id)
+        return rendered
+
 
     def validate_ddl_and_schema_parity(self, table_name: str) -> None:
         """Verify that column definitions match between JSON schema and DDL file."""
@@ -201,6 +225,13 @@ class BigQuerySchemaManager:
                 raise SchemaValidationError(
                     f"Partition column '{spec.partition_column}' in spec not found in materialized view '{mv_name}' fields: {fields}"
                 )
+
+    def validate_federated_views_catalog(self) -> None:
+        """Validate all federated views against JSON schema files, DDLs, and catalog specs."""
+        for view_name, spec in FEDERATED_VIEWS_CATALOG.items():
+            self.load_json_schema(view_name)
+            self.load_raw_ddl(view_name)
+
 
     def to_arrow_schema(self, table_name: str) -> pa.Schema:
         """Convert BigQuery JSON schema into an Apache PyArrow Schema."""
