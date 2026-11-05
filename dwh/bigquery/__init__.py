@@ -1,4 +1,4 @@
-"""BigQuery Star Schema DDL, Management, and Local Emulation Package (Day 22)."""
+"""BigQuery Star Schema DDL, Management, Emulation, Benchmarking, and Cost Optimization Package (Days 22-26)."""
 
 from dwh.bigquery.config import (
     BigQueryDatasetConfig,
@@ -51,6 +51,30 @@ from dwh.bigquery.seed_data import (
     generate_mock_risk_stats,
     generate_mock_trade_orders,
 )
+from dwh.bigquery.benchmark import (
+    BENCHMARK_SCENARIOS_CATALOG,
+    BenchmarkCategory,
+    BenchmarkMetricResult,
+    BenchmarkRunner,
+    BenchmarkScenario,
+    BenchmarkSuiteResult,
+    BenchmarkTelemetry,
+)
+from dwh.bigquery.benchmark_cli import run_benchmark_cli
+from dwh.bigquery.cost_optimizer import (
+    AntipatternFinding,
+    BigQueryPricingModel,
+    BudgetCheckResult,
+    BudgetGuardrailManager,
+    BudgetPolicy,
+    CostEstimationResult,
+    FindingSeverity,
+    PricingTier,
+    QueryAntipatternAnalyzer,
+    RunawayQueryRemediator,
+    StorageBillingModel,
+)
+from dwh.bigquery.cost_cli import run_cost_cli
 
 __all__ = [
     "BigQueryDatasetConfig",
@@ -94,4 +118,24 @@ __all__ = [
     "generate_mock_risk_alerts",
     "generate_mock_risk_stats",
     "generate_mock_trade_orders",
+    "BenchmarkCategory",
+    "BenchmarkScenario",
+    "BenchmarkMetricResult",
+    "BenchmarkSuiteResult",
+    "BenchmarkTelemetry",
+    "BenchmarkRunner",
+    "BENCHMARK_SCENARIOS_CATALOG",
+    "run_benchmark_cli",
+    "PricingTier",
+    "StorageBillingModel",
+    "FindingSeverity",
+    "CostEstimationResult",
+    "AntipatternFinding",
+    "BigQueryPricingModel",
+    "QueryAntipatternAnalyzer",
+    "BudgetPolicy",
+    "BudgetCheckResult",
+    "BudgetGuardrailManager",
+    "RunawayQueryRemediator",
+    "run_cost_cli",
 ]

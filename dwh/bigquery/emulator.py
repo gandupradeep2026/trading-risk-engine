@@ -474,6 +474,14 @@ class LocalBigQueryEmulator:
 
         return counts
 
+    def seed_dimensions(
+        self,
+        date_start: date = date(2026, 1, 1),
+        date_end: date = date(2026, 12, 31),
+    ) -> Dict[str, int]:
+        """Alias for load_seed_dimensions."""
+        return self.load_seed_dimensions(date_start=date_start, date_end=date_end)
+
     def insert_rows(self, table_name: str, rows: List[Dict[str, Any]]) -> int:
         """Insert a batch of dictionary records into the specified table."""
         if not rows:

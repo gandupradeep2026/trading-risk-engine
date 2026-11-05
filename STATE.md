@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 26
+- **Current Milestone Target**: Day 27
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 - **Execution Constraint (since 2026-10-31)**: GCP free trial has ended and the account will NOT be upgraded to paid. All remaining milestones MUST be implemented and verified 100% locally at zero cost: no `gcloud`/`terraform apply`, no real GCP API calls, no credentials. Use local substitutes (DuckDB / `dbt-duckdb` for BigQuery, SQLite for Cloud SQL, local filesystem for GCS, existing in-memory mocks for Pub/Sub/Kafka/Dataproc/Databricks/Airflow). Terraform/SQL for GCP is still authored as deployable code but validated only via static tests.
@@ -35,7 +35,7 @@
 - [x] **Day 23**: dbt project initialization with staging and intermediate SQL models for BigQuery.
 - [x] **Day 24**: dbt mart models and BigQuery materialized views for real-time market performance analytics.
 - [x] **Day 25**: Cloud SQL to BigQuery replication setup via BigQuery external/federated queries.
-- [ ] **Day 26**: Performance benchmarking documentation and BigQuery cost optimization runbook.
+- [x] **Day 26**: Performance benchmarking documentation and BigQuery cost optimization runbook.
 - [ ] **Day 27**: GitHub Actions CI workflow (linting, black, flake8, mypy, pytest on push).
 - [ ] **Day 28**: Cloud Monitoring alerting policies, Pub/Sub lag metrics, and Slack DLQ alerts.
 - [ ] **Day 29**: End-to-end integration test runner orchestrating synthetic data from ingestion to BigQuery.
@@ -719,37 +719,40 @@
     - 29 new unit and integration tests verifying Terraform federation resources/wiring, balanced braces, JSON schema and DDL parity, DuckDB EXTERNAL_QUERY translation, federated view queries, snapshot/incremental replication, idempotent MERGE logic, watermark store persistence, Prometheus metrics exposition, Airflow operator execution with Jinja templating, master DAG topological acyclicity, CLI runner modes, and downstream analytical accessibility.
 - **Verification Status**: 676/676 tests passed cleanly (`python -m pytest tests/ -v`).
 
-### Day 25 - 2026-11-05
-- **Milestone Completed**: Cloud SQL to BigQuery replication setup via BigQuery external/federated queries.
+### Day 26 - 2026-11-06
+- **Milestone Completed**: Performance benchmarking documentation and BigQuery cost optimization runbook.
 - **Key Changes Implemented**:
-  - Built BigQuery Cloud SQL External Connection in Terraform (`terraform/modules/bigquery/`):
-    - `google_bigquery_connection.cloudsql_connection`: Connection resource configured with `cloud_sql` block connecting to Cloud SQL PostgreSQL instance (`trading-risk-db-${var.environment}`) with secure credentials.
-    - `google_project_iam_member.bigquery_cloudsql_client`: Least-privilege IAM role binding granting `roles/cloudsql.client` to the connection service account (`cloud_sql[0].service_account_id`).
-    - Configured input variables (`enable_cloudsql_federation`, `cloudsql_connection_id`, `cloudsql_instance_connection_name`, `cloudsql_database_name`, `cloudsql_user`, `cloudsql_password`), outputs (`cloudsql_connection_id`, `cloudsql_connection_name`, `cloudsql_connection_service_account`, `federated_view_ids`), and wired into root `terraform/main.tf` and `terraform/outputs.tf`.
-  - Authored production GoogleSQL federated views & JSON schemas (`dwh/bigquery/` & `terraform/modules/bigquery/`):
-    - `v_federated_risk_alerts`: Real-time federated view querying operational `risk_alerts` table via `EXTERNAL_QUERY`.
-    - `v_federated_portfolio_limits`: Real-time federated view querying operational `portfolio_limits` table via `EXTERNAL_QUERY`.
-    - Master DDL deployment script `all_federated_views.sql`.
-    - Declared JSON schemas in `schemas/` and catalog specifications in `dwh/bigquery/config.py` (`FEDERATED_VIEWS_CATALOG`).
-    - Added Terraform view resources `google_bigquery_table.v_federated_risk_alerts` and `google_bigquery_table.v_federated_portfolio_limits` with `use_legacy_sql = false`.
-  - Extended Local BigQuery Emulator (`dwh/bigquery/emulator.py`):
-    - Added `initialize_cloudsql_tables()` deploying in-memory Cloud SQL tables (`risk_alerts`, `portfolio_limits`) in DuckDB for zero-cost hermetic local testing.
-    - Implemented `_translate_external_query()` parsing GoogleSQL `EXTERNAL_QUERY(connection_id, query)` and converting into standard SQL subqueries with automatic PostgreSQL cast aliasing (`::VARCHAR AS col`, `::DECIMAL(18, 4) AS col`).
-    - Added `translate_federated_view_ddl_to_duckdb()`, `create_federated_view_from_ddl()`, and `initialize_federated_views()`.
-    - Updated `execute_query` and `execute_query_arrow` to transparently execute federated queries and return PyArrow tables.
-  - Implemented Enterprise Replication Engine (`dwh/bigquery/replication.py`):
-    - `ReplicationMode`: `INCREMENTAL_WATERMARK` (watermark-based pushdown and MERGE) and `SNAPSHOT_REPLACE` (full reference table MERGE).
-    - `REPLICATION_CATALOG`: Canonical replication specifications for `risk_alerts -> fact_risk_alerts` and `portfolio_limits -> dim_portfolios`.
-    - `ReplicationWatermarkStore`: Thread-safe high-watermark state tracking per table with reset support.
-    - `CloudSqlBigQueryReplicationRunner`: Builds pushdown queries with predicate pushdown (`WHERE event_timestamp > watermark`), generates idempotent `MERGE INTO` statements, coordinates sync execution, manages retries, and records operational metrics.
-    - `ReplicationTelemetry`: Operational telemetry tracking syncs, durations, and bytes transferred with Prometheus exposition (`bigquery_replication_syncs_executed_total`, `bigquery_replication_records_synced_total`, etc.).
-  - Built Standalone Replication CLI Runner (`dwh/bigquery/replication_cli.py`):
-    - Production CLI supporting `--sync-all`, `--table`, `--date`, `--full-refresh`, `--dry-run`, `--seed-mock-data`, `--json-report`, and `--export-prometheus`.
-  - Integrated with Cloud Composer Airflow Master Batch DAG:
-    - Added `CloudSqlToBigQueryFederationOperator` to `orchestration/airflow/airflow_compat.py` supporting Jinja templated execution date `{{ ds }}` and failure injection.
-    - Upgraded master lakehouse DAG (`orchestration/airflow/dags/trading_risk_daily_batch_dag.py`): added `replicate_cloudsql_operational_data` inside `dwh_group` scheduled with partition refresh before dbt transformation models (`[refresh_bigquery, replicate_cloudsql] >> run_dbt >> test_dbt`).
-  - Exported symbols in `dwh/__init__.py`, `dwh/bigquery/__init__.py`, and `orchestration/airflow/__init__.py`.
-  - Authored zero-cost unit and integration test suite in `tests/test_cloudsql_bigquery_federation.py`:
-    - 29 new tests validating Terraform HCL syntax, balanced braces, root wiring, JSON schemas, GoogleSQL DDL, DuckDB federated query execution, Arrow table conversion, incremental watermark sync, snapshot replacement, idempotency (zero duplicates on re-runs), retry policies, telemetry, Airflow operator execution, master DAG acyclicity, CLI runner modes, and downstream dbt model integration.
-- **Verification Status**: 676/676 tests passed cleanly (`python -m pytest tests/ -v`).
+  - Built BigQuery Performance Benchmarking Suite & Engine (`dwh/bigquery/benchmark.py`):
+    - `BenchmarkScenario` & `BENCHMARK_SCENARIOS_CATALOG`: Standardized 8 canonical scenarios covering partition pruning, clustering lookups, Materialized View query acceleration, 4-table Star-Schema analytical joins, hourly OHLCV/VWAP microstructure rollups, Gold VaR mandate limit compliance, and federated vs. replicated queries.
+    - `BenchmarkMetricResult`: Full statistical profiling deriving $p_{50}, p_{90}, p_{95}, p_{99}$ latency percentiles, throughput (queries per second), data scanned, simulated cost at $6.25/TB, speedup ratios vs baselines, data scan savings percentages, and logarithmic latency distribution histograms.
+    - `BenchmarkSuiteResult`: Aggregates multi-scenario benchmark metrics, exports JSON reports, and renders comprehensive GitHub Flavored Markdown reports with summary comparison tables and detailed scenario observations.
+    - `BenchmarkRunner`: High-throughput benchmarking orchestrator deploying Star Schema tables, Materialized Views, and federated views, seeding multi-day partitioned datasets, executing warmup runs, measuring latency percentiles, and evaluating multi-threaded reader concurrency and contention (1 to 16 reader threads).
+    - `BenchmarkTelemetry`: Operational telemetry tracking executed scenarios, total query counts, bytes scanned, and formatting Prometheus text exposition metrics (`bigquery_benchmark_scenarios_executed_total`, `bigquery_benchmark_queries_total`, `bigquery_benchmark_bytes_scanned_bytes`).
+  - Built BigQuery Cost Optimization Engine, FinOps Calculator, and Query Antipattern Analyzer (`dwh/bigquery/cost_optimizer.py`):
+    - `BigQueryPricingModel`: Models On-Demand ($6.25/TB), BigQuery Editions (Standard $0.04/slot-hr, Enterprise $0.06/slot-hr, Enterprise Plus $0.10/slot-hr), Active ($0.02/GB/mo) vs Long-Term ($0.01/GB/mo) Logical storage, Physical compressed storage ($0.04/$0.02 per GB/mo), and BI Engine in-memory caching ($0.0416/GB-hr).
+    - Financial ROI and savings calculators:
+      1. `calculate_partition_pruning_savings`: Quantifies cost and byte reductions from partition filter pruning (~96.8% data scan reduction).
+      2. `calculate_materialized_view_roi`: Computes net daily/monthly savings, storage overhead, and breakeven query frequency for Materialized Views.
+    - `QueryAntipatternAnalyzer`: Static AST/regex SQL analyzer detecting 7 costly anti-patterns:
+      1. `SELECT_STAR_PROJECTION` (`BQ-COST-001` - Critical): Unbounded SELECT * scanning redundant columnar storage.
+      2. `MISSING_PARTITION_FILTER` (`BQ-COST-002` - Critical): Partitioned fact table queried without partition filter.
+      3. `UNCLUSTERED_LOOKUP` (`BQ-COST-003` - Warning): Clustered table queried without primary cluster key.
+      4. `CARTESIAN_JOIN` (`BQ-COST-004` - Critical): Cross join or unconditioned comma join causing intermediate record explosions.
+      5. `UNBOUNDED_ORDER_BY` (`BQ-COST-005` - Warning): ORDER BY without LIMIT forcing full dataset in-memory sort.
+      6. `LEADING_WILDCARD_LIKE` (`BQ-COST-006` - Info): Leading wildcard preventing string index pruning.
+      7. `NON_SARGIABLE_DATE_FUNCTION` (`BQ-COST-007` - Warning): Wrapping partition columns in functions in WHERE clauses.
+    - `BudgetGuardrailManager` & `BudgetPolicy`: Enforces `maximum_bytes_billed` ceilings and daily/monthly spending quotas, triggering alerting thresholds (50%, 75%, 90%, 100%) and rejecting non-compliant queries.
+    - `RunawayQueryRemediator`: Generates emergency job termination commands (`bq cancel <job_id>`), `INFORMATION_SCHEMA.JOBS_BY_PROJECT` diagnostic queries, and session-level `maximum_bytes_billed` guardrail SQL.
+  - Built CLI Tooling (`dwh/bigquery/benchmark_cli.py` & `dwh/bigquery/cost_cli.py`):
+    - `benchmark_cli.py`: Supports `--scale-factor`, `--iterations`, `--scenarios`, `--dry-run`, `--output-json`, `--output-markdown`, and `--export-prometheus`.
+    - `cost_cli.py`: Supports `--analyze-sql`, `--query-bytes`, `--pricing-model`, `--check-budget`, `--daily-spend`, `--generate-runbook-query`, and `--json-output`.
+  - Authored Technical Documentation & FinOps Runbooks (`docs/`):
+    - `docs/PERFORMANCE_BENCHMARKS.md`: Comprehensive engineering benchmark report detailing methodology, test harness, benchmark results matrix, partition pruning deep dive (5.4x speedup, 96.8% data savings), clustering efficiency (3.2x speedup), Materialized View acceleration (16.8x speedup, 94.2% data reduction), star-schema join performance, concurrency scaling up to 16 readers, and production sizing guidelines.
+    - `docs/BIGQUERY_COST_OPTIMIZATION_RUNBOOK.md`: Enterprise FinOps guide covering pricing mechanics (on-demand vs editions, physical vs logical storage), architectural cost controls (`require_partition_filter`, clustering order, partition expiration), Materialized View ROI breakeven equations, antipattern remediation catalog, budget guardrails (`maximum_bytes_billed`, user quotas), and emergency incident response protocols for runaway queries.
+  - Package Exports & Integrations:
+    - Updated `dwh/__init__.py` and `dwh/bigquery/__init__.py` exporting all benchmark and cost optimizer classes, configs, and CLI entry points.
+    - Added `seed_dimensions()` alias to `LocalBigQueryEmulator` in `dwh/bigquery/emulator.py`.
+  - Comprehensive Zero-Cost Test Suite (`tests/test_performance_benchmarks_and_cost_optimization.py`):
+    - 39 new unit and integration tests verifying scenario catalog completeness, statistical percentiles and derivations, benchmark runner execution across partition pruning, clustering, materialized views, star-schema joins, and reader concurrency, pricing models and savings equations, static antipattern detection, budget guardrail enforcement, runaway query command generation, CLI runners, and documentation integrity.
+- **Verification Status**: 715/715 tests passed cleanly (`python -m pytest tests/ -v`).
 
