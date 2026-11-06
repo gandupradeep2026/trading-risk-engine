@@ -22,7 +22,7 @@ import os
 import sys
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from ingestion.pubsub_client import TradeOrder
 from ingestion.pubsub.mock import AsyncLocalPubSubMock, PubSubPublishFuture

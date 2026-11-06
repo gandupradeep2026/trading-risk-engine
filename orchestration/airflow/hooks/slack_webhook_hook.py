@@ -13,7 +13,7 @@ from enum import Enum
 import json
 import logging
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 import urllib.error
 import urllib.request
 

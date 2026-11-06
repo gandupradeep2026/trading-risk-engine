@@ -553,10 +553,10 @@ class DeltaBronzeIngestionEngine:
 
                 # Build PyArrow Table
                 column_arrays = []
-                for field in arrow_schema:
-                    col_name = field.name
+                for arrow_field in arrow_schema:
+                    col_name = arrow_field.name
                     vals = [r.get(col_name) for r in recs]
-                    column_arrays.append(pa.array(vals, type=field.type))
+                    column_arrays.append(pa.array(vals, type=arrow_field.type))
 
                 arrow_table = pa.Table.from_arrays(column_arrays, schema=arrow_schema)
                 pq.write_table(

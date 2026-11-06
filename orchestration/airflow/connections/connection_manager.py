@@ -35,9 +35,9 @@ class AirflowConnection:
         netloc_parts: List[str] = []
         userinfo = ""
         if self.login or self.password:
-            l = urllib.parse.quote(self.login or "", safe="")
-            p = urllib.parse.quote(self.password or "", safe="")
-            userinfo = f"{l}:{p}@" if self.password else f"{l}@"
+            login_enc = urllib.parse.quote(self.login or "", safe="")
+            pass_enc = urllib.parse.quote(self.password or "", safe="")
+            userinfo = f"{login_enc}:{pass_enc}@" if self.password else f"{login_enc}@"
 
         host_str = self.host or ""
         # Strip scheme if accidentally in host

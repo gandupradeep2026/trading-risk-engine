@@ -141,8 +141,8 @@ def get_dim_date_records(
         date(2026, 6, 19),  # Juneteenth
         date(2026, 7, 3),   # Independence Day observed
         date(2026, 9, 7),   # Labor Day
-        date(2026, 11, 26), # Thanksgiving
-        date(2026, 12, 25), # Christmas
+        date(2026, 11, 26),  # Thanksgiving
+        date(2026, 12, 25),  # Christmas
     }
 
     records = []

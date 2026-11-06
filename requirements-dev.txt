@@ -1,0 +1,26 @@
+# ==============================================================================
+# Trading Risk Engine: Development & CI Dependencies
+# ==============================================================================
+
+# Core Testing Framework & Plugins
+pytest>=8.0.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+pytest-xdist>=3.5.0
+
+# Code Formatting & Clean Style
+black>=24.0.0
+flake8>=7.0.0
+isort>=5.13.0
+
+# Static Type Checking
+mypy>=1.8.0
+types-PyYAML>=6.0.0
+types-requests>=2.31.0
+
+# Schema & Configuration
+pyyaml>=6.0.0
+pydantic>=2.6.0
+
+# Security Auditing & Compliance
+bandit>=1.7.6

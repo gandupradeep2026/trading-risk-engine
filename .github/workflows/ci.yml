@@ -1,0 +1,183 @@
+name: Trading Risk Engine CI
+
+on:
+  push:
+    branches:
+      - main
+      - "release/**"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_benchmarks:
+        description: "Run BigQuery performance benchmarks"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+env:
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  CI: "true"
+
+jobs:
+  lint-and-format:
+    name: Lint & Static Analysis (Black, Flake8, Mypy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Development & Linting Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Verify Code Formatting with Black
+        run: |
+          python -m black --check --diff .
+
+      - name: Lint Codebase with Flake8
+        run: |
+          python -m flake8 .
+
+      - name: Type Check with Mypy
+        run: |
+          python -m mypy
+
+      - name: Validate CI Workflows & Codebase AST
+        run: |
+          python -m ci.cli --validate-workflows --ast-scan
+
+  security-scan:
+    name: Security & Static Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Bandit Security Scanner
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit
+
+      - name: Execute Bandit Static Analysis
+        run: |
+          bandit -r batch/ dwh/ ingestion/ orchestration/ streaming/ ci/ -c pyproject.toml --severity-level medium
+
+  terraform-validate:
+    name: Terraform Linting & Manifest Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up HashiCorp Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+
+      - name: Check Terraform Formatting
+        run: |
+          terraform fmt -check -recursive terraform/
+
+      - name: Initialize and Validate Terraform Manifests
+        run: |
+          cd terraform
+          terraform init -backend=false
+          terraform validate
+
+  test-matrix:
+    name: Pytest Test Suite (Python ${{ matrix.python-version }})
+    needs: [lint-and-format]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install Platform Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -r batch/requirements.txt
+          pip install -r dwh/requirements.txt
+          pip install -r streaming/requirements.txt
+          pip install -r ingestion/requirements.txt
+          pip install -r orchestration/requirements.txt
+
+      - name: Execute Full Zero-Cost Test Suite
+        run: |
+          python -m pytest tests/ -v --durations=10 --junitxml=junit/test-results-${{ matrix.python-version }}.xml
+
+      - name: Upload Test Results Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.python-version }}
+          path: junit/
+          retention-days: 14
+
+  ci-status-gate:
+    name: CI Pipeline Status Gatekeeper
+    needs: [lint-and-format, security-scan, terraform-validate, test-matrix]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate Upstream Job Results
+        run: |
+          LINT_RES="${{ needs.lint-and-format.result }}"
+          SEC_RES="${{ needs.security-scan.result }}"
+          TF_RES="${{ needs.terraform-validate.result }}"
+          TEST_RES="${{ needs.test-matrix.result }}"
+
+          echo "lint-and-format:    $LINT_RES"
+          echo "security-scan:      $SEC_RES"
+          echo "terraform-validate: $TF_RES"
+          echo "test-matrix:        $TEST_RES"
+
+          if [ "$LINT_RES" != "success" ] || \
+             [ "$SEC_RES" != "success" ] || \
+             [ "$TF_RES" != "success" ] || \
+             [ "$TEST_RES" != "success" ]; then
+            echo "ERROR: One or more upstream CI jobs failed."
+            exit 1
+          fi
+
+          echo "SUCCESS: All CI pipeline checks passed cleanly."

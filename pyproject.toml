@@ -1,0 +1,110 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trading-risk-engine"
+version = "1.0.0"
+description = "Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Trading Risk Platform Engineering Team"}
+]
+dependencies = [
+    "pydantic>=2.6.0",
+    "pyarrow>=14.0.0",
+    "pyyaml>=6.0.0",
+    "duckdb>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "black>=24.0.0",
+    "flake8>=7.0.0",
+    "isort>=5.13.0",
+    "mypy>=1.8.0",
+    "types-PyYAML>=6.0.0",
+    "types-requests>=2.31.0",
+    "bandit>=1.7.6",
+]
+
+[tool.black]
+line-length = 120
+target-version = ["py310", "py311", "py312"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | build
+  | dist
+  | \.pytest_cache
+  | terraform
+  | \.terraform
+  | batch
+  | data_quality
+  | dwh
+  | ingestion
+  | orchestration
+  | streaming
+  | tests
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 120
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+skip_glob = ["**/terraform/**", "**/.venv/**"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = false
+warn_unused_configs = true
+ignore_missing_imports = true
+check_untyped_defs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = [
+    "apache_beam.*",
+    "pyspark.*",
+    "delta.*",
+    "google.cloud.*",
+    "duckdb.*",
+    "kafka.*",
+    "slack_sdk.*",
+    "great_expectations.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv", "terraform"]
+skips = ["B101", "B608"]
