@@ -55,6 +55,7 @@ extend-exclude = '''
   | data_quality
   | dwh
   | ingestion
+  | monitoring
   | orchestration
   | streaming
   | tests

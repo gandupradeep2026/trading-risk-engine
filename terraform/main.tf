@@ -175,6 +175,30 @@ module "bigquery" {
   cloudsql_password                 = module.cloudsql.db_password
 }
 
+# -----------------------------------------------------------------------------
+# 9. CLOUD MONITORING & SLACK ALERTING MODULE
+# -----------------------------------------------------------------------------
+module "monitoring" {
+  source = "./modules/monitoring"
+
+  project_id                            = var.project_id
+  environment                           = var.environment
+  notification_slack_channel            = var.notification_slack_channel
+  notification_slack_dlq_channel        = var.notification_slack_dlq_channel
+  slack_auth_token                      = var.slack_auth_token
+  notification_email                    = var.notification_email
+  pagerduty_service_key                 = var.pagerduty_service_key
+  pubsub_lag_threshold_messages         = var.pubsub_lag_threshold_messages
+  pubsub_oldest_unacked_age_seconds     = var.pubsub_oldest_unacked_age_seconds
+  pubsub_dlq_threshold_messages         = var.pubsub_dlq_threshold_messages
+  dataflow_system_lag_threshold_seconds = var.dataflow_system_lag_threshold_seconds
+  cloudsql_cpu_threshold                = var.cloudsql_cpu_threshold
+  trade_orders_subscription_id          = module.pubsub.trade_orders_dataflow_subscription_id
+  trade_orders_dlq_topic_id             = module.pubsub.trade_orders_dlq_topic_id
+  enable_alert_policies                 = var.enable_alert_policies
+}
+
+
 
 
 

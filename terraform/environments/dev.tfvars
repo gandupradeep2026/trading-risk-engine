@@ -58,3 +58,15 @@ bigquery_dataset_id                 = "trading_risk_dwh_dev"
 bigquery_dataset_name               = "Trading Risk DWH (Development)"
 bigquery_delete_contents_on_destroy = true
 bigquery_require_partition_filter   = true
+
+# Cloud Monitoring & Alerting (Dev profile)
+notification_slack_channel            = "#risk-alerts-dev"
+notification_slack_dlq_channel        = "#risk-dlq-dev"
+notification_email                    = "trading-risk-dev-alerts@example.com"
+pubsub_lag_threshold_messages         = 5000
+pubsub_oldest_unacked_age_seconds     = 180
+pubsub_dlq_threshold_messages         = 1
+dataflow_system_lag_threshold_seconds = 120
+cloudsql_cpu_threshold                = 0.80
+enable_alert_policies                 = true
+

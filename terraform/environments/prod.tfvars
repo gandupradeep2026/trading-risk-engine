@@ -58,3 +58,15 @@ bigquery_dataset_id                 = "trading_risk_dwh_prod"
 bigquery_dataset_name               = "Trading Risk DWH (Production)"
 bigquery_delete_contents_on_destroy = false
 bigquery_require_partition_filter   = true
+
+# Cloud Monitoring & Alerting (Prod profile)
+notification_slack_channel            = "#risk-alerts-prod"
+notification_slack_dlq_channel        = "#risk-dlq-prod"
+notification_email                    = "trading-risk-oncall@example.com"
+pubsub_lag_threshold_messages         = 10000
+pubsub_oldest_unacked_age_seconds     = 300
+pubsub_dlq_threshold_messages         = 1
+dataflow_system_lag_threshold_seconds = 180
+cloudsql_cpu_threshold                = 0.85
+enable_alert_policies                 = true
+

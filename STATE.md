@@ -1,7 +1,7 @@
 # trading-risk-engine: State & Milestone Runbook
 
 ## Execution Summary
-- **Current Milestone Target**: Day 28
+- **Current Milestone Target**: Day 29
 - **Platform**: Multi-Asset Real-Time Streaming & Enterprise Risk Management Engine on Google Cloud Platform (GCP)
 - **Repository Root**: `trading-risk-engine`
 - **Execution Constraint (since 2026-10-31)**: GCP free trial has ended and the account will NOT be upgraded to paid. All remaining milestones MUST be implemented and verified 100% locally at zero cost: no `gcloud`/`terraform apply`, no real GCP API calls, no credentials. Use local substitutes (DuckDB / `dbt-duckdb` for BigQuery, SQLite for Cloud SQL, local filesystem for GCS, existing in-memory mocks for Pub/Sub/Kafka/Dataproc/Databricks/Airflow). Terraform/SQL for GCP is still authored as deployable code but validated only via static tests.
@@ -37,7 +37,7 @@
 - [x] **Day 25**: Cloud SQL to BigQuery replication setup via BigQuery external/federated queries.
 - [x] **Day 26**: Performance benchmarking documentation and BigQuery cost optimization runbook.
 - [x] **Day 27**: GitHub Actions CI workflow (linting, black, flake8, mypy, pytest on push).
-- [ ] **Day 28**: Cloud Monitoring alerting policies, Pub/Sub lag metrics, and Slack DLQ alerts.
+- [x] **Day 28**: Cloud Monitoring alerting policies, Pub/Sub lag metrics, and Slack DLQ alerts.
 - [ ] **Day 29**: End-to-end integration test runner orchestrating synthetic data from ingestion to BigQuery.
 - [ ] **Day 30**: Executive architecture README with Mermaid diagrams, benchmarks, and portfolio case study.
 
@@ -784,4 +784,31 @@
   - Comprehensive Zero-Cost Test Suite (`tests/test_github_actions_ci.py`):
     - 30 new unit and integration tests verifying workflow file existence, YAML parsing, triggers, concurrency, permissions, job DAG topology and acyclicity, matrix configurations, timeout boundaries, requirements file resolution, error handling on cyclic or invalid workflows, AST scanner detection of code smells, YAML file validity across the repo, Black formatting, Flake8 style compliance, Mypy typing, Prometheus metrics formatting, and CLI runner execution.
 - **Verification Status**: 745/745 tests passed cleanly (`python -m pytest tests/ -v`).
+
+### Day 28 - 2026-11-08
+- **Milestone Completed**: Cloud Monitoring alerting policies, Pub/Sub lag metrics, and Slack DLQ alerts.
+- **Key Changes Implemented**:
+  - Built Production Terraform Cloud Monitoring & Alerting Module (`terraform/modules/monitoring/`):
+    - Configured Google Cloud Monitoring notification channels: Slack Risk Alerts (`slack_alerts`), Slack Dead-Letter Queue Alerts (`slack_dlq`), Email Escalations (`email_alerts`), and PagerDuty (`pagerduty_alerts`).
+    - Metric-driven alert policies with cross-series aggregations, alignment periods, and incident documentation links:
+      1. `pubsub_subscription_lag`: Monitors `pubsub.googleapis.com/subscription/num_undelivered_messages` (> 10,000) and `oldest_unacked_message_age` (> 300s) over 300s durations with `ALIGN_MEAN` / `ALIGN_MAX`.
+      2. `pubsub_dlq_activity`: Monitors Dead-Letter Topic message arrivals (`pubsub.googleapis.com/topic/send_request_count` > 0 over 60s) for immediate dispatch to `#risk-dlq` and PagerDuty.
+      3. `dataflow_system_lag`: Monitors Cloud Dataflow streaming watermark lag (`dataflow.googleapis.com/job/system_lag` > 120s over 300s).
+      4. `cloudsql_cpu_utilization`: Monitors Cloud SQL PostgreSQL CPU usage (`cloudsql.googleapis.com/database/cpu/utilization` > 80% over 600s).
+    - Fully wired into root `terraform/main.tf`, `variables.tf`, `outputs.tf`, `environments/dev.tfvars`, and `prod.tfvars`.
+  - Built Cloud Monitoring, Pub/Sub Lag & Slack Alerting Engine (`monitoring/`):
+    - `monitoring/config.py`: Canonical alert policy catalog (`DEFAULT_ALERT_POLICIES`) across 6 core policies, severity tiers (`CRITICAL`, `WARNING`, `INFO`, `RESOLVED`), `PoisonPillCategory` enums, and strongly-typed `MonitoringConfig` with environment variable loading and validation.
+    - `monitoring/metrics.py`: `PubSubLagMetricsCalculator` deriving undelivered message backlog, oldest unacked message age, net drain rate ($\text{consumption} - \text{publish}$), Estimated Time to Drain (ETD), consumer stall detection (`STALLED_CONSUMER`), severity classification (`HEALTHY`, `MODERATE_LAG`, `CRITICAL_LAG`, `STALLED_CONSUMER`), and OpenMetrics / Prometheus exposition.
+    - `monitoring/slack_alerts.py`: `SlackBlockKitBuilder` constructing rich Slack Block Kit notifications for DLQ poison pills, subscription lag breaches, and GCP incidents with diagnostic error blocks, sanitized payload previews, and action buttons; and `SlackDlqAlertDispatcher` managing webhook delivery, alert deduplication cooldown suppression, and exponential backoff retry logic for HTTP 429 rate limits and 5xx transient errors.
+    - `monitoring/dlq_monitor.py`: `DeadLetterQueueMonitor` providing forensic classification of poison pills (`JSON_DECODE_ERROR`, `SCHEMA_VALIDATION_ERROR`, `CROSSED_QUOTE_ERROR`, `NON_POSITIVE_PRICE_ERROR`, `NON_POSITIVE_QUANTITY_ERROR`, `MAX_RETRIES_EXHAUSTED`), generating `DlqForensicReport` with markdown tables, and dispatching consolidated Slack alerts per error burst.
+    - `monitoring/webhook_handler.py`: `CloudMonitoringWebhookHandler` parsing GCP Cloud Monitoring incident webhook payloads (schema v1.2) and translating state transitions into Block Kit notifications.
+    - `monitoring/evaluator.py`: `AlertPolicyEvaluator` providing zero-cost local simulation of Google Cloud Monitoring alerting engine, tracking active incidents, and handling automatic resolution and notification dispatch.
+    - `monitoring/telemetry.py`: Thread-safe operational telemetry (`MonitoringTelemetry`) tracking evaluations, opened/closed incidents, sent/suppressed/failed Slack alerts, DLQ records scanned, and formatting Prometheus text metrics.
+    - `monitoring/cli.py`: Standalone CLI runner supporting `--validate-policies`, `--check-lag`, `--inspect-dlq`, `--simulate-alert`, `--export-prometheus`, and `--json-report`.
+  - Authored Incident Response & Operational Runbook (`docs/CLOUD_MONITORING_AND_ALERTING_RUNBOOK.md`):
+    - Multi-tier architecture Mermaid diagrams, complete metric dictionary, and Standard Operating Procedures (SOPs) for Pub/Sub lag remediation (`#pubsub-lag-remediation`), DLQ poison pill triage (`#dlq-triage-sop`), Dataflow system lag (`#dataflow-lag-remediation`), and Cloud SQL CPU optimization (`#cloudsql-cpu-remediation`).
+  - Comprehensive Zero-Cost Test Suite (`tests/test_cloud_monitoring_and_slack_alerts.py`):
+    - 40 new unit and integration tests verifying Terraform HCL syntax, balanced braces, root wiring, policy specifications, lag and ETD calculations, Prometheus exposition, Block Kit structure, deduplication cooldowns, retry handling on 429/500, DLQ classification, webhook parsing, incident lifecycle, CLI runner modes, and runbook documentation.
+- **Verification Status**: 785/785 tests passed cleanly (`python -m pytest tests/ -v`).
+
 

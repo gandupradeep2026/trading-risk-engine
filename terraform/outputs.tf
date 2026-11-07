@@ -290,3 +290,25 @@ output "bigquery_federated_views" {
   value       = module.bigquery.federated_view_ids
 }
 
+# Cloud Monitoring & Alerting Outputs (Day 28)
+output "monitoring_slack_channel_id" {
+  description = "The resource ID of the Slack general risk alerts notification channel"
+  value       = module.monitoring.slack_notification_channel_id
+}
+
+output "monitoring_slack_dlq_channel_id" {
+  description = "The resource ID of the Slack Dead-Letter Queue (DLQ) notification channel"
+  value       = module.monitoring.slack_dlq_notification_channel_id
+}
+
+output "monitoring_email_channel_id" {
+  description = "The resource ID of the Email notification channel"
+  value       = module.monitoring.email_notification_channel_id
+}
+
+output "monitoring_alert_policy_ids" {
+  description = "Map of all Cloud Monitoring alert policy IDs"
+  value       = module.monitoring.alert_policy_ids
+}
+
+
