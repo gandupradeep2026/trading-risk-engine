@@ -54,6 +54,7 @@ extend-exclude = '''
   | batch
   | data_quality
   | dwh
+  | e2e
   | ingestion
   | monitoring
   | orchestration
