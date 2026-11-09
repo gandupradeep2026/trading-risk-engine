@@ -52,6 +52,7 @@ extend-exclude = '''
   | terraform
   | \.terraform
   | batch
+  | case_study
   | data_quality
   | dwh
   | e2e
